@@ -1,11 +1,11 @@
 {
-  "version": "0.1.19",
-  "pub_date": "2026-01-17T17:33:31Z",
+  "version": "0.1.20",
+  "pub_date": "2026-01-17T17:50:50Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSeDQ4MXMrTjV1VUJrV2ZhOGF4Y1pBekRYTWJQeVp5MXhTOHNsQlVpd0l4eXNBQ3FHL1JQOTU2d0xZdmdzVW9CanM3K3BIZzZYSHdOM1M1cjVTR1luQ3plaWNSSWE0UWdJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY4NjcxNTEzCWZpbGU6Vm9pY2VXaXNlXzAuMS4xOV94NjQtc2V0dXAuZXhlCjRpOUQxRzdrZVZZTDRiaHR4Nm9Jd3RwdkhYeHZtZHFUVFpYZlVZdDhRQVdHY3Q3ZWQ2SkZ3S3JXY3p6OGRTYzhjYzJ3dUlLeHJZUTFrWlN5bVNHUkRRPT0K",
-      "url": "https://github.com/Voice-Wise/release/releases/download/v0.1.19/VoiceWise_0.1.19_windows_x64.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSeDQ4MXMrTjV1VUN2eXVpYkEvSlBXRGJqR1A5U2RrQzB4L0FSZ2xMNURvVVNTWFRWWFNLbzZPN3NKbmpyYmpKNUIwNGFmS3NBYnd2K0hUZVZpTFdSSktSSG5rNFNOUXdZPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY4NjcyNTc0CWZpbGU6Vm9pY2VXaXNlXzAuMS4yMF94NjQtc2V0dXAuZXhlCll2ZUpKSUlzTnpyallMcGFmRW9pOUo4ZDEyQTEyQ0Z5WDB4RGk3ZUpkQWRZN093VkZBeDB6ek9id2doMkRtQy9VRzFXbUlENUdKdXJtaTZBeEdZVEJRPT0K",
+      "url": "https://github.com/Voice-Wise/release/releases/download/v0.1.20/VoiceWise_0.1.20_windows_x64.exe"
     }
   },
-  "notes": "VoiceWise v0.1.19（Stable）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/v0.1.19"
+  "notes": "VoiceWise v0.1.20（Stable）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/v0.1.20"
 }
