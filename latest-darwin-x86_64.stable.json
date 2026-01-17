@@ -1,0 +1,11 @@
+{
+  "version": "0.1.18",
+  "pub_date": "2026-01-17T17:06:00Z",
+  "platforms": {
+    "darwin-x86_64": {
+      "signature": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZTZURRNE1YTXJUalYxVlVWU1NqRjNXVlJyU0cxaU1sZERRVWhWUW1SUk1tWmlUazExYkdJNVIzRlhPV2N2ZWtZelZ5ODBaa0ptYVZWR2VsRTNMME5VTDJaRFMzVXhOMWRRTldNMVZtZERaVEI0YldRM1pHeFBSbGRMUzNGMVFrRlZQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpZNE5qWTVPVGsyQ1dacGJHVTZWbTlwWTJWWGFYTmxMbUZ3Y0M1MFlYSXVaM29LZFhOaFZWY3liM0psYjNaUmQwOXFZVUk0V1U0NWIzVXhNV2hLVVZaSmFrMHZaemx3WmtOcU16QjJObkJZVUVWWGNtOUVWVEkyVjNKT2JYWkNiRXcxU2pSMlRYaFpSbkJtTW1wS1ZtTnZTMmg1Vm1VMlExRTlQUW89",
+      "url": "https://github.com/Voice-Wise/release/releases/download/v0.1.18/VoiceWise_0.1.18_darwin_x64.app.tar.gz"
+    }
+  },
+  "notes": "VoiceWise v0.1.18（Stable）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/v0.1.18"
+}

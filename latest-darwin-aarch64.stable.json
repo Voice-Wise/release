@@ -1,0 +1,11 @@
+{
+  "version": "0.1.18",
+  "pub_date": "2026-01-17T17:06:00Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZTZURRNE1YTXJUalYxVlVSTU5sWklPRGs0Ym1jNWFXYzNTRlZHZDJaQ1lWaGxNak5RZUVkaFRqTTJkMU00VjJscVZWVlpUM2hrU1ZCemFHcDRiVVIzVTFKSFJ6VjRWSEJKYTB4dVZVSXhXV2hyYTJORVpFZEhiMUV3Y0dVMU1WRkpQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpZNE5qY3dNamc0Q1dacGJHVTZWbTlwWTJWWGFYTmxMbUZ3Y0M1MFlYSXVaM29LUzNGRmVtOTNUVmtyVkN0aFVtTmxWeTgyYW5GR1UzQkxXbXd5VGt4d2QyNTVlWFZHVEhWM2FEZzNPV3hKVEVKdk5UVTBMMjlUUnpSQk5tTmtNVE42Y25Vd01HbDRiV3BXVTFONFZGUnZSekl3VVVvMVFXYzlQUW89",
+      "url": "https://github.com/Voice-Wise/release/releases/download/v0.1.18/VoiceWise_0.1.18_darwin_aarch64.app.tar.gz"
+    }
+  },
+  "notes": "VoiceWise v0.1.18（Stable）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/v0.1.18"
+}

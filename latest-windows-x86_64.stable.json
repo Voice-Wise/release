@@ -1,0 +1,11 @@
+{
+  "version": "0.1.18",
+  "pub_date": "2026-01-17T17:06:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZTZURRNE1YTXJUalYxVlV0eGNuRkJiakZGYVd4d2RXSjBUazU0TWtnNGVuaERNVEl6S3pZeE0yZzNieXQyYURSVldGZEZPRGh2TVU1UE5reE1NRUkwTUVwdlNFdFJaazlGVEVaa1VtSmxUVFpQT0haMU5HRjJOR3M1WWxSU2JFRnJQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94TnpZNE5qY3dNekV5Q1dacGJHVTZWbTlwWTJWWGFYTmxYekF1TVM0eE9GOTROalF0YzJWMGRYQXVaWGhsQ2xkUVQxcEtZMnhvYkRkUmNWWnNSR2gxWjJaVFpFeHlialJXVDBOcVZUbG5TWFIwWTJsU2IwOTVWQ3M1UTNVM2FFcDRReXRFZGs5VU9UUTJaR0pOV0dkUWEycHhlakJtV25kME5rNUJUWGxWTUdneWVFTlJQVDBL",
+      "url": "https://github.com/Voice-Wise/release/releases/download/v0.1.18/VoiceWise_0.1.18_windows_x64.exe"
+    }
+  },
+  "notes": "VoiceWise v0.1.18（Stable）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/v0.1.18"
+}
