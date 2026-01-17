@@ -112,7 +112,7 @@ jobs:
           "
           else
             # Build the prompt
-            PROMPT="Based on the following git commit messages, generate a concise and user-friendly changelog in Chinese (Simplified). Group changes by category (e.g., ✨ 新功能, 🐛 问题修复, ⚡ 性能优化, 🔧 其他改进). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.
+            PROMPT="Based on the following git commit messages, generate a concise and user-friendly changelog in BOTH Chinese (Simplified) and English. First output the Chinese version, then add a horizontal rule (---), then output the English version. Group changes by category (e.g., ✨ 新功能/New Features, 🐛 问题修复/Bug Fixes, ⚡ 性能优化/Performance, 🔧 其他改进/Other Improvements). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.
 
           Commit messages:
           $COMMITS"
@@ -130,10 +130,10 @@ jobs:
             CHANGELOG=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null || true)
 
             if [[ -z "$CHANGELOG" ]]; then
-              # Fallback to simple format
+              # Fallback to generic message (don't expose raw commit messages)
               NOTES="## Changelog
 
-          $(echo "$COMMITS" | sed 's/^/- /')
+          See release for details. / 详见发布说明。
           "
             else
               NOTES="## Changelog
@@ -141,13 +141,6 @@ jobs:
           $CHANGELOG
           "
             fi
-          fi
-
-          # Append compare URL if available
-          if [[ -n "$COMPARE_URL" ]]; then
-            NOTES="$NOTES
-
-          Full Changelog: $COMPARE_URL"
           fi
 
           echo "notes<<EOF" >> "$GITHUB_OUTPUT"
