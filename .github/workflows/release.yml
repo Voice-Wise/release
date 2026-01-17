@@ -86,6 +86,8 @@ jobs:
       - name: Generate changelog from commits
         id: changelog
         shell: bash
+        env:
+          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -100,63 +102,53 @@ jobs:
             COMPARE_URL=""
           fi
 
-          NOTES="$(
-            git log --reverse --no-merges --format='%H%x09%s' ${RANGE} | awk -F'\t' -v repo="Voice-Wise/VoiceWise" -v compare="${COMPARE_URL}" '
-              function add(type, line) {
-                if (items[type] == "") items[type] = line
-                else items[type] = items[type] "\n" line
-                count[type]++
-                total++
-              }
-              {
-                sha=$1
-                subject=$2
+          # Get commit messages
+          COMMITS="$(git log --reverse --no-merges --format='%s' ${RANGE} | grep -v '^chore(release):' || true)"
 
-                if (subject ~ /^chore\(release\):/) next
+          if [[ -z "$COMMITS" ]]; then
+            NOTES="## Changelog
 
-                type="other"
-                if (subject ~ /^[A-Za-z]+(\([^)]*\))?: /) {
-                  prefix=subject
-                  sub(/:.*/, "", prefix)
-                  type=tolower(prefix)
-                  sub(/\(.*/, "", type)
-                }
+          - No changes.
+          "
+          else
+            # Build the prompt
+            PROMPT="Based on the following git commit messages, generate a concise and user-friendly changelog in Chinese (Simplified). Group changes by category (e.g., ✨ 新功能, 🐛 问题修复, ⚡ 性能优化, 🔧 其他改进). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.
 
-                line="- " subject " ([" substr(sha,1,7) "](https://github.com/" repo "/commit/" sha "))"
-                add(type, line)
-              }
-              END {
-                print "## Changelog\n"
-                if (total == 0) {
-                  print "- No changes.\n"
-                } else {
-                  n=0
-                  order[++n]="feat"; title["feat"]="Features"
-                  order[++n]="fix"; title["fix"]="Bug Fixes"
-                  order[++n]="perf"; title["perf"]="Performance"
-                  order[++n]="refactor"; title["refactor"]="Refactors"
-                  order[++n]="docs"; title["docs"]="Documentation"
-                  order[++n]="test"; title["test"]="Tests"
-                  order[++n]="ci"; title["ci"]="CI"
-                  order[++n]="build"; title["build"]="Build"
-                  order[++n]="chore"; title["chore"]="Chores"
-                  order[++n]="revert"; title["revert"]="Reverts"
-                  order[++n]="other"; title["other"]="Other"
-                  for (i=1; i<=n; i++) {
-                    t=order[i]
-                    if (count[t] > 0) {
-                      print "### " title[t]
-                      print items[t] "\n"
-                    }
-                  }
-                }
+          Commit messages:
+          $COMMITS"
 
-                if (compare != "") {
-                  print "Full Changelog: " compare
-                }
-              }
-            '
-          )"
+            # Call DashScope API
+            RESPONSE=$(curl -s --max-time 30 "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" \
+              -H "Authorization: Bearer $DASHSCOPE_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n --arg prompt "$PROMPT" '{
+                "model": "qwen-plus-latest",
+                "messages": [{"role": "user", "content": $prompt}],
+                "max_tokens": 1024
+              }')" 2>/dev/null || echo "{}")
+
+            CHANGELOG=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null || true)
+
+            if [[ -z "$CHANGELOG" ]]; then
+              # Fallback to simple format
+              NOTES="## Changelog
+
+          $(echo "$COMMITS" | sed 's/^/- /')
+          "
+            else
+              NOTES="## Changelog
+
+          $CHANGELOG
+          "
+            fi
+          fi
+
+          # Append compare URL if available
+          if [[ -n "$COMPARE_URL" ]]; then
+            NOTES="$NOTES
+
+          Full Changelog: $COMPARE_URL"
+          fi
 
           echo "notes<<EOF" >> "$GITHUB_OUTPUT"
           echo "$NOTES" >> "$GITHUB_OUTPUT"
