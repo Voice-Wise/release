@@ -313,23 +313,12 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Checkout private repo scripts
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/VoiceWise
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.create-release.outputs.ref }}
-          path: private-repo
-          sparse-checkout: |
-            scripts/generate-updater-manifests.py
-          sparse-checkout-cone-mode: false
-
       - name: Generate stable updater manifests
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          python private-repo/scripts/generate-updater-manifests.py \
+          python scripts/generate-updater-manifests.py \
             --owner "Voice-Wise" \
             --repo "release" \
             --tag "v${{ needs.create-release.outputs.version }}" \
