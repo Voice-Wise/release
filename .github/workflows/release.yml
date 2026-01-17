@@ -1,0 +1,353 @@
+name: Release Build
+
+on:
+  repository_dispatch:
+    types: [release]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build (tag or branch)"
+        required: true
+        type: string
+      version:
+        description: "Version to release (e.g., 0.1.0)"
+        required: true
+        type: string
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+      release_body: ${{ steps.changelog.outputs.notes }}
+      version: ${{ steps.params.outputs.version }}
+      ref: ${{ steps.params.outputs.ref }}
+    steps:
+      - name: Get build parameters
+        id: params
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "ref=${{ github.event.client_payload.ref }}" >> $GITHUB_OUTPUT
+            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Checkout private source code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ steps.params.outputs.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Verify stable tag + version consistency
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import os
+          import json
+          import re
+          import tomllib
+          from pathlib import Path
+
+          tag = os.environ.get("BUILD_REF", "")
+          if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
+              raise SystemExit(f"Expected stable tag vX.Y.Z, got: {tag}")
+
+          expected = tag.removeprefix("v")
+          pkg_version = json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]
+          tauri_version = json.loads(Path("src-tauri/tauri.conf.json").read_text(encoding="utf-8"))["version"]
+          cargo_version = tomllib.loads(Path("src-tauri/Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
+
+          versions = {
+              "package.json": pkg_version,
+              "src-tauri/tauri.conf.json": tauri_version,
+              "src-tauri/Cargo.toml": cargo_version,
+          }
+
+          mismatch = {k: v for k, v in versions.items() if v != expected}
+          if mismatch:
+              joined = ", ".join(f"{k}={v}" for k, v in mismatch.items())
+              raise SystemExit(f"Version mismatch: tag={expected}, {joined}")
+          print(f"Version OK: {expected}")
+          PY
+        env:
+          BUILD_REF: ${{ steps.params.outputs.ref }}
+
+      - name: Generate changelog from commits
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CURRENT_TAG="${{ steps.params.outputs.ref }}"
+          PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*' "${CURRENT_TAG}^" 2>/dev/null || true)"
+
+          if [[ -n "${PREV_TAG}" ]]; then
+            RANGE="${PREV_TAG}..HEAD"
+            COMPARE_URL="https://github.com/Voice-Wise/VoiceWise/compare/${PREV_TAG}...${CURRENT_TAG}"
+          else
+            RANGE="HEAD"
+            COMPARE_URL=""
+          fi
+
+          NOTES="$(
+            git log --reverse --no-merges --format='%H%x09%s' ${RANGE} | awk -F'\t' -v repo="Voice-Wise/VoiceWise" -v compare="${COMPARE_URL}" '
+              function add(type, line) {
+                if (items[type] == "") items[type] = line
+                else items[type] = items[type] "\n" line
+                count[type]++
+                total++
+              }
+              {
+                sha=$1
+                subject=$2
+
+                if (subject ~ /^chore\(release\):/) next
+
+                type="other"
+                if (subject ~ /^[A-Za-z]+(\([^)]*\))?: /) {
+                  prefix=subject
+                  sub(/:.*/, "", prefix)
+                  type=tolower(prefix)
+                  sub(/\(.*/, "", type)
+                }
+
+                line="- " subject " ([" substr(sha,1,7) "](https://github.com/" repo "/commit/" sha "))"
+                add(type, line)
+              }
+              END {
+                print "## Changelog\n"
+                if (total == 0) {
+                  print "- No changes.\n"
+                } else {
+                  n=0
+                  order[++n]="feat"; title["feat"]="Features"
+                  order[++n]="fix"; title["fix"]="Bug Fixes"
+                  order[++n]="perf"; title["perf"]="Performance"
+                  order[++n]="refactor"; title["refactor"]="Refactors"
+                  order[++n]="docs"; title["docs"]="Documentation"
+                  order[++n]="test"; title["test"]="Tests"
+                  order[++n]="ci"; title["ci"]="CI"
+                  order[++n]="build"; title["build"]="Build"
+                  order[++n]="chore"; title["chore"]="Chores"
+                  order[++n]="revert"; title["revert"]="Reverts"
+                  order[++n]="other"; title["other"]="Other"
+                  for (i=1; i<=n; i++) {
+                    t=order[i]
+                    if (count[t] > 0) {
+                      print "### " title[t]
+                      print items[t] "\n"
+                    }
+                  }
+                }
+
+                if (compare != "") {
+                  print "Full Changelog: " compare
+                }
+              }
+            '
+          )"
+
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$NOTES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        id: release
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
+        with:
+          tag_name: v${{ steps.params.outputs.version }}
+          name: VoiceWise v${{ steps.params.outputs.version }}
+          body: ${{ steps.changelog.outputs.notes }}
+          generate_release_notes: false
+          draft: false
+          prerelease: false
+
+  package:
+    name: Package (${{ matrix.name }})
+    needs: [create-release]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (aarch64)
+            os: macos-latest
+            target: aarch64-apple-darwin
+            tauri_args: --target aarch64-apple-darwin
+            artifact_name: voicewise-macos-aarch64-apple-darwin
+            artifact_paths: |
+              src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz*
+
+          - name: macOS (x86_64)
+            os: macos-latest
+            target: x86_64-apple-darwin
+            tauri_args: --target x86_64-apple-darwin
+            artifact_name: voicewise-macos-x86_64-apple-darwin
+            artifact_paths: |
+              src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
+              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz*
+
+          - name: Windows (x86_64)
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            tauri_args: --target x86_64-pc-windows-msvc --bundles nsis
+            artifact_name: voicewise-windows-x86_64-pc-windows-msvc
+            artifact_paths: |
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe*
+
+    steps:
+      - name: Checkout private source code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.create-release.outputs.ref }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
+        with:
+          bun-version: "1.3.2"
+
+      - name: Cache Bun
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-${{ matrix.target }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        with:
+          workspaces: |
+            src-tauri -> target
+
+      - name: Run Rust tests
+        run: bun run test:rust
+
+      - name: Install NSIS (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: |
+          choco install nsis -y --no-progress
+          if (Test-Path 'C:\Program Files (x86)\NSIS') {
+            'C:\Program Files (x86)\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          } elseif (Test-Path 'C:\Program Files\NSIS') {
+            'C:\Program Files\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          }
+
+      - name: Build + upload assets (macOS)
+        if: ${{ runner.os == 'macOS' }}
+        uses: tauri-apps/tauri-action@v0.6.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tauriScript: "bun run tauri"
+          tagName: v${{ needs.create-release.outputs.version }}
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          releaseBody: ""
+          args: ${{ matrix.tauri_args }}
+          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
+
+      - name: Build + upload assets (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        uses: tauri-apps/tauri-action@v0.6.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tauriScript: "bun run tauri"
+          tagName: v${{ needs.create-release.outputs.version }}
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          releaseBody: ""
+          args: ${{ matrix.tauri_args }}
+          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_paths }}
+          if-no-files-found: error
+
+  publish-stable-manifests:
+    name: Publish Stable Manifests
+    needs: [create-release, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Checkout private repo scripts
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.create-release.outputs.ref }}
+          path: private-repo
+          sparse-checkout: |
+            scripts/generate-updater-manifests.py
+          sparse-checkout-cone-mode: false
+
+      - name: Generate stable updater manifests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          python private-repo/scripts/generate-updater-manifests.py \
+            --owner "Voice-Wise" \
+            --repo "release" \
+            --tag "v${{ needs.create-release.outputs.version }}" \
+            --out-dir "." \
+            --channel stable
+
+      - name: Commit + push manifests
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add latest-*.stable.json
+          if git diff --cached --quiet; then
+            echo "No manifest changes."
+            exit 0
+          fi
+
+          git commit -m "chore(release): update stable manifests for v${{ needs.create-release.outputs.version }}"
+          git push origin HEAD:main
