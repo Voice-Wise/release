@@ -1,5 +1,4 @@
 import argparse
-import base64
 import json
 import os
 import re
@@ -195,14 +194,16 @@ def main() -> int:
         )
 
         sig_bytes = _download_github_release_asset(sig_asset["url"], token=token)
-        sig_b64 = base64.b64encode(sig_bytes).decode("utf-8")
+        # The .sig file already contains base64-encoded minisign signature
+        # Do NOT re-encode it, just decode the bytes to string
+        sig_content = sig_bytes.decode("utf-8").strip()
 
         manifest = {
             "version": version,
             "pub_date": published_at,
             "platforms": {
                 target["platform_key"]: {
-                    "signature": sig_b64,
+                    "signature": sig_content,
                     "url": updater_asset["browser_download_url"],
                 }
             },
