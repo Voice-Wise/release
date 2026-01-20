@@ -1,11 +1,11 @@
 {
-  "version": "0.1.23",
-  "pub_date": "2026-01-20T01:43:18Z",
+  "version": "0.1.22",
+  "pub_date": "2026-01-19T02:30:29Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSeDQ4MXMrTjV1VVBtY2JuVkFKOHhRMTErbHBiZS83aDBlZDlKSHBqdmRqemdOREtxMDhydkFFRzB6THdyNEh2Nm5MZDlkeWNPempkWHVCMTZkbEdDY203amd2ZzBIVmdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY4ODczNzE5CWZpbGU6Vm9pY2VXaXNlLmFwcC50YXIuZ3oKTTJiTmtlQldYVmhzK24rY25xc2ZaV0o0VW5iNmM0dUpTYnZuVXFyaDBYS2V0MFJkQVVKVTNUV2pzY2hMclIrUVYyZWRPMFd4WEhxVWt1SVFVWEsrQ2c9PQo=",
-      "url": "https://github.com/Voice-Wise/release/releases/download/v0.1.23/VoiceWise_0.1.23_darwin_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSeDQ4MXMrTjV1VUg5ckltd1VSNjRnZEhYc2U1c01lb2hTOENoSzhmSG5ac011TDdOM1VrczlrdERBQU9ldHdjS1RCbGRPREZuVnQ4RG1ZcVY2R0dpemc5YXZvdFJCM2cwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY4ODczNzY1CWZpbGU6Vm9pY2VXaXNlLmFwcC50YXIuZ3oKTU5UWlF4SU5DMlJJVGpKMUxBVVBFVUhjOUNRdDhsOHp0a1F4STlhcGFPTXBuQU5jekxMa2ZlTVR1K3lzUmw2REZCQk9uMExBS2pWaHpsSEdtc2FwQlE9PQo=",
+      "url": "https://github.com/Voice-Wise/release/releases/download/v0.1.22/VoiceWise_0.1.22_darwin_aarch64.app.tar.gz"
     }
   },
-  "notes": "VoiceWise v0.1.23（Stable）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/v0.1.23"
+  "notes": "VoiceWise v0.1.22（Stable）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/v0.1.22"
 }
