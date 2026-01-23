@@ -218,6 +218,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Run FE tests
+        run: bun run test:fe
+
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
