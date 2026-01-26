@@ -101,7 +101,22 @@ def main() -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--out-dir", required=True)
-    parser.add_argument("--channel", default="stable", choices=["stable"])
+    parser.add_argument(
+        "--channel",
+        default="stable",
+        choices=["stable", "nightly"],
+        help="Update channel (stable or nightly)",
+    )
+    parser.add_argument(
+        "--format",
+        default="legacy",
+        choices=["legacy", "scoped-target"],
+        help=(
+            "Manifest naming format. "
+            "'legacy' writes latest-<target>-<arch>.<channel>.json with platform keys <target>-<arch>. "
+            "'scoped-target' writes latest-<target>-<channel>-<arch>.json with platform keys <target>-<channel>-<arch>."
+        ),
+    )
     parser.add_argument("--notes", default="")
     parser.add_argument(
         "--token-env",
@@ -110,8 +125,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if not re.fullmatch(r"v\d+\.\d+\.\d+", args.tag):
-        raise RuntimeError(f"Expected stable tag vX.Y.Z, got: {args.tag}")
+    if args.channel == "stable":
+        if not re.fullmatch(r"v\d+\.\d+\.\d+", args.tag):
+            raise RuntimeError(f"Expected stable tag vX.Y.Z, got: {args.tag}")
+    else:
+        if not re.fullmatch(r"v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", args.tag):
+            raise RuntimeError(f"Expected nightly tag vX.Y.Z(-pre)?(+meta)?, got: {args.tag}")
 
     token = os.environ.get(args.token_env, "")
 
@@ -132,29 +151,40 @@ def main() -> int:
     notes = (args.notes or "").strip()
     if not notes:
         release_html_url = release.get("html_url") or ""
-        notes = f"VoiceWise v{version}（Stable）\n\n更新说明请查看：{release_html_url}".strip()
+        channel_label = "Stable" if args.channel == "stable" else "Nightly"
+        notes = f"VoiceWise v{version}（{channel_label}）\n\n更新说明请查看：{release_html_url}".strip()
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    def make_output_file(os_target: str, arch: str) -> str:
+        if args.format == "legacy":
+            return f"latest-{os_target}-{arch}.{args.channel}.json"
+        return f"latest-{os_target}-{args.channel}-{arch}.json"
+
+    def make_platform_key(os_target: str, arch: str) -> str:
+        if args.format == "legacy":
+            return f"{os_target}-{arch}"
+        return f"{os_target}-{args.channel}-{arch}"
+
     targets = [
         {
-            "file": f"latest-darwin-aarch64.{args.channel}.json",
-            "platform_key": "darwin-aarch64",
+            "os_target": "darwin",
+            "arch_canonical": "aarch64",
             "platform_aliases": ["macos", "darwin"],
             "arch_aliases": ["aarch64", "arm64"],
             "extensions": [".app.tar.gz", ".tar.gz"],
         },
         {
-            "file": f"latest-darwin-x86_64.{args.channel}.json",
-            "platform_key": "darwin-x86_64",
+            "os_target": "darwin",
+            "arch_canonical": "x86_64",
             "platform_aliases": ["macos", "darwin"],
             "arch_aliases": ["x86_64", "x64"],
             "extensions": [".app.tar.gz", ".tar.gz"],
         },
         {
-            "file": f"latest-windows-x86_64.{args.channel}.json",
-            "platform_key": "windows-x86_64",
+            "os_target": "windows",
+            "arch_canonical": "x86_64",
             "platform_aliases": ["windows"],
             "arch_aliases": ["x86_64", "x64"],
             "extensions": [".exe"],
@@ -162,9 +192,11 @@ def main() -> int:
     ]
 
     for target in targets:
+        os_target = target["os_target"]
+        arch_canonical = target["arch_canonical"]
         last_error: Exception | None = None
         updater_asset = None
-        matched_arch = None
+        matched_arch_alias = None
         for arch in target["arch_aliases"]:
             for ext in target["extensions"]:
                 try:
@@ -175,7 +207,7 @@ def main() -> int:
                         arch=arch,
                         extension=ext,
                     )
-                    matched_arch = arch
+                    matched_arch_alias = arch
                     break
                 except Exception as exc:  # noqa: BLE001
                     last_error = exc
@@ -189,7 +221,7 @@ def main() -> int:
             assets=assets,
             version=version,
             platform_aliases=target["platform_aliases"],
-            arch=matched_arch or target["arch_aliases"][0],
+            arch=matched_arch_alias or target["arch_aliases"][0],
             updater_asset_name=updater_asset["name"],
         )
 
@@ -198,11 +230,12 @@ def main() -> int:
         # Do NOT re-encode it, just decode the bytes to string
         sig_content = sig_bytes.decode("utf-8").strip()
 
+        platform_key = make_platform_key(os_target, arch_canonical)
         manifest = {
             "version": version,
             "pub_date": published_at,
             "platforms": {
-                target["platform_key"]: {
+                platform_key: {
                     "signature": sig_content,
                     "url": updater_asset["browser_download_url"],
                 }
@@ -210,7 +243,7 @@ def main() -> int:
             "notes": notes,
         }
 
-        out_path = out_dir / target["file"]
+        out_path = out_dir / make_output_file(os_target, arch_canonical)
         out_path.write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
