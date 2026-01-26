@@ -1,30 +1,30 @@
-name: Release Build
+name: Nightly Build
 
 on:
   repository_dispatch:
-    types: [release]
+    types: [nightly]
   workflow_dispatch:
     inputs:
       ref:
-        description: "Git ref to build (tag or branch)"
-        required: true
-        type: string
-      version:
-        description: "Version to release (e.g., 0.1.0)"
+        description: "Git ref to build (commit SHA or branch)"
         required: true
         type: string
 
+concurrency:
+  group: nightly-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  create-release:
-    name: Create Release
+  prepare:
+    name: Prepare Nightly Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
       release_id: ${{ steps.release.outputs.id }}
-      release_body: ${{ steps.changelog.outputs.notes }}
-      version: ${{ steps.params.outputs.version }}
+      nightly_version: ${{ steps.version.outputs.nightly_version }}
       ref: ${{ steps.params.outputs.ref }}
+      release_body: ${{ steps.changelog.outputs.notes }}
     steps:
       - name: Get build parameters
         id: params
@@ -32,10 +32,8 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
             echo "ref=${{ github.event.client_payload.ref }}" >> $GITHUB_OUTPUT
-            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
           else
             echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
           fi
 
       - name: Checkout private source code
@@ -47,43 +45,39 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Verify stable tag + version consistency
+      - name: Compute nightly version
+        id: version
         shell: bash
         run: |
           set -euo pipefail
 
-          python - <<'PY'
-          import os
+          BASE_VERSION="$(python - <<'PY'
           import json
-          import re
-          import tomllib
           from pathlib import Path
-
-          tag = os.environ.get("BUILD_REF", "")
-          if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
-              raise SystemExit(f"Expected stable tag vX.Y.Z, got: {tag}")
-
-          expected = tag.removeprefix("v")
-          pkg_version = json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]
-          tauri_version = json.loads(Path("src-tauri/tauri.conf.json").read_text(encoding="utf-8"))["version"]
-          cargo_version = tomllib.loads(Path("src-tauri/Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
-
-          versions = {
-              "package.json": pkg_version,
-              "src-tauri/tauri.conf.json": tauri_version,
-              "src-tauri/Cargo.toml": cargo_version,
-          }
-
-          mismatch = {k: v for k, v in versions.items() if v != expected}
-          if mismatch:
-              joined = ", ".join(f"{k}={v}" for k, v in mismatch.items())
-              raise SystemExit(f"Version mismatch: tag={expected}, {joined}")
-          print(f"Version OK: {expected}")
+          v = json.loads(Path("package.json").read_text(encoding="utf-8")).get("version","").strip()
+          print(v)
           PY
-        env:
-          BUILD_REF: ${{ steps.params.outputs.ref }}
+          )"
 
-      - name: Generate changelog from commits
+          if [[ ! "${BASE_VERSION}" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then
+            echo "Invalid base version in package.json: ${BASE_VERSION}" >&2
+            exit 1
+          fi
+
+          MAJOR="${BASE_VERSION%%.*}"
+          REST="${BASE_VERSION#*.}"
+          MINOR="${REST%%.*}"
+          PATCH="${REST#*.}"
+
+          NEXT_PATCH="$((PATCH + 1))"
+          DATE_UTC="$(date -u +%Y%m%d)"
+          SHA="$(git rev-parse --short=7 HEAD)"
+
+          NIGHTLY_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}-nightly.${DATE_UTC}.${SHA}"
+          echo "nightly_version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Nightly version: ${NIGHTLY_VERSION}"
+
+      - name: Generate nightly changelog from commits
         id: changelog
         shell: bash
         env:
@@ -91,33 +85,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          CURRENT_TAG="${{ steps.params.outputs.ref }}"
-          PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*' "${CURRENT_TAG}^" 2>/dev/null || true)"
+          CURRENT_REF="${{ steps.params.outputs.ref }}"
+          LAST_STABLE_TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
 
-          if [[ -n "${PREV_TAG}" ]]; then
-            RANGE="${PREV_TAG}..HEAD"
-            COMPARE_URL="https://github.com/Voice-Wise/VoiceWise/compare/${PREV_TAG}...${CURRENT_TAG}"
+          if [[ -n "${LAST_STABLE_TAG}" ]]; then
+            RANGE="${LAST_STABLE_TAG}..HEAD"
+            COMPARE_URL="https://github.com/Voice-Wise/VoiceWise/compare/${LAST_STABLE_TAG}...${CURRENT_REF}"
           else
             RANGE="HEAD"
             COMPARE_URL=""
           fi
 
-          # Get commit messages
           COMMITS="$(git log --reverse --no-merges --format='%s' ${RANGE} | grep -v '^chore(release):' || true)"
 
+          HEADER="## Nightly Build\n\n- Version: v${{ steps.version.outputs.nightly_version }}\n- Ref: ${CURRENT_REF}\n"
+          if [[ -n "${COMPARE_URL}" ]]; then
+            HEADER="${HEADER}- Compare: ${COMPARE_URL}\n"
+          fi
+
           if [[ -z "$COMMITS" ]]; then
-            NOTES="## Changelog
-
-          - No changes.
-          "
+            NOTES="${HEADER}\n\n## Changelog\n\n- No changes.\n"
           else
-            # Build the prompt
-            PROMPT="Based on the following git commit messages, generate a concise and user-friendly changelog in BOTH Chinese (Simplified) and English. First output the Chinese version, then add a horizontal rule (---), then output the English version. Group changes by category (e.g., ✨ 新功能/New Features, 🐛 问题修复/Bug Fixes, ⚡ 性能优化/Performance, 🔧 其他改进/Other Improvements). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.
+            PROMPT="You are generating release notes for a NIGHTLY build. Based on the following git commit messages, generate a concise and user-friendly changelog in BOTH Chinese (Simplified) and English. First output the Chinese version, then add a horizontal rule (---), then output the English version. Group changes by category (e.g., ✨ 新功能/New Features, 🐛 问题修复/Bug Fixes, ⚡ 性能优化/Performance, 🔧 其他改进/Other Improvements). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.\n\nCommit messages:\n$COMMITS"
 
-          Commit messages:
-          $COMMITS"
-
-            # Call DashScope API
             RESPONSE=$(curl -s --max-time 30 "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" \
               -H "Authorization: Bearer $DASHSCOPE_API_KEY" \
               -H "Content-Type: application/json" \
@@ -130,37 +120,30 @@ jobs:
             CHANGELOG=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null || true)
 
             if [[ -z "$CHANGELOG" ]]; then
-              # Fallback to generic message (don't expose raw commit messages)
-              NOTES="## Changelog
-
-          See release for details. / 详见发布说明。
-          "
+              NOTES="${HEADER}\n\n## Changelog\n\nSee source repository for details.\n"
             else
-              NOTES="## Changelog
-
-          $CHANGELOG
-          "
+              NOTES="${HEADER}\n\n## Changelog\n\n${CHANGELOG}\n"
             fi
           fi
 
           echo "notes<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$NOTES" >> "$GITHUB_OUTPUT"
+          echo -e "$NOTES" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub release
+      - name: Create GitHub prerelease (nightly)
         id: release
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
-          tag_name: v${{ steps.params.outputs.version }}
-          name: VoiceWise v${{ steps.params.outputs.version }}
+          tag_name: v${{ steps.version.outputs.nightly_version }}
+          name: VoiceWise Nightly v${{ steps.version.outputs.nightly_version }}
           body: ${{ steps.changelog.outputs.notes }}
           generate_release_notes: false
           draft: false
-          prerelease: false
+          prerelease: true
 
   package:
     name: Package (${{ matrix.name }})
-    needs: [create-release]
+    needs: [prepare]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -172,7 +155,7 @@ jobs:
             os: macos-latest
             target: aarch64-apple-darwin
             tauri_args: --target aarch64-apple-darwin
-            artifact_name: voicewise-macos-aarch64-apple-darwin
+            artifact_name: voicewise-nightly-macos-aarch64-apple-darwin
             artifact_paths: |
               src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
               src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz*
@@ -181,7 +164,7 @@ jobs:
             os: macos-latest
             target: x86_64-apple-darwin
             tauri_args: --target x86_64-apple-darwin
-            artifact_name: voicewise-macos-x86_64-apple-darwin
+            artifact_name: voicewise-nightly-macos-x86_64-apple-darwin
             artifact_paths: |
               src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
               src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz*
@@ -190,7 +173,7 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
             tauri_args: --target x86_64-pc-windows-msvc --bundles nsis
-            artifact_name: voicewise-windows-x86_64-pc-windows-msvc
+            artifact_name: voicewise-nightly-windows-x86_64-pc-windows-msvc
             artifact_paths: |
               src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe*
 
@@ -200,7 +183,7 @@ jobs:
         with:
           repository: Voice-Wise/VoiceWise
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.create-release.outputs.ref }}
+          ref: ${{ needs.prepare.outputs.ref }}
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
@@ -232,6 +215,39 @@ jobs:
       - name: Run Rust tests
         run: bun run test:rust
 
+      - name: Patch version for nightly build
+        shell: bash
+        env:
+          NIGHTLY_VERSION: ${{ needs.prepare.outputs.nightly_version }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+
+          version = os.environ["NIGHTLY_VERSION"].strip()
+          if not version:
+              raise SystemExit("Missing NIGHTLY_VERSION")
+
+          pkg_path = Path("package.json")
+          pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
+          pkg["version"] = version
+          pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+          tauri_path = Path("src-tauri/tauri.conf.json")
+          tauri = json.loads(tauri_path.read_text(encoding="utf-8"))
+          tauri["version"] = version
+          tauri_path.write_text(json.dumps(tauri, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+          cargo_path = Path("src-tauri/Cargo.toml")
+          content = cargo_path.read_text(encoding="utf-8")
+          pattern = r'(^\\[package\\].*?^version\\s*=\\s*\")[^\"]*(\"\\s*$)'
+          new_content, count = re.subn(pattern, rf"\\g<1>{version}\\g<2>", content, count=1, flags=re.MULTILINE | re.DOTALL)
+          if count == 0:
+              raise SystemExit("Failed to patch Cargo.toml version")
+          cargo_path.write_text(new_content, encoding="utf-8", newline="\\n")
+          PY
+
       - name: Install NSIS (Windows)
         if: ${{ runner.os == 'Windows' }}
         run: |
@@ -257,8 +273,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tauriScript: "bun run tauri"
-          tagName: v${{ needs.create-release.outputs.version }}
-          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: v${{ needs.prepare.outputs.nightly_version }}
+          releaseId: ${{ needs.prepare.outputs.release_id }}
           releaseBody: ""
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
@@ -272,8 +288,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: "bun run tauri"
-          tagName: v${{ needs.create-release.outputs.version }}
-          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: v${{ needs.prepare.outputs.nightly_version }}
+          releaseId: ${{ needs.prepare.outputs.release_id }}
           releaseBody: ""
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
@@ -285,9 +301,9 @@ jobs:
           path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
 
-  publish-stable-manifests:
-    name: Publish Stable Manifests
-    needs: [create-release, package]
+  publish-nightly-manifests:
+    name: Publish Nightly Manifests
+    needs: [prepare, package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -298,27 +314,17 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Generate stable updater manifests
+      - name: Generate nightly updater manifests
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-
-          # Legacy manifests (for older app builds)
           python scripts/generate-updater-manifests.py \
             --owner "Voice-Wise" \
             --repo "release" \
-            --tag "v${{ needs.create-release.outputs.version }}" \
+            --tag "v${{ needs.prepare.outputs.nightly_version }}" \
             --out-dir "." \
-            --channel stable
-
-          # New manifests (channel encoded into target, e.g. darwin-stable)
-          python scripts/generate-updater-manifests.py \
-            --owner "Voice-Wise" \
-            --repo "release" \
-            --tag "v${{ needs.create-release.outputs.version }}" \
-            --out-dir "." \
-            --channel stable \
+            --channel nightly \
             --format scoped-target
 
       - name: Commit + push manifests
@@ -328,12 +334,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add latest-*.stable.json
-          git add latest-*-stable-*.json
+          git add latest-*-nightly-*.json
           if git diff --cached --quiet; then
             echo "No manifest changes."
             exit 0
           fi
 
-          git commit -m "chore(release): update stable manifests for v${{ needs.create-release.outputs.version }}"
+          git commit -m "chore(nightly): update manifests for v${{ needs.prepare.outputs.nightly_version }}"
           git push origin HEAD:main
+
