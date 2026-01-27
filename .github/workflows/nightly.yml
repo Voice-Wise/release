@@ -6,8 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Git ref to build (commit SHA or branch)"
-        required: true
+        description: "Git ref to build (commit SHA or branch, defaults to master)"
+        required: false
+        default: "master"
         type: string
 
 concurrency:
@@ -59,7 +60,7 @@ jobs:
           PY
           )"
 
-          if [[ ! "${BASE_VERSION}" =~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]]; then
+          if [[ ! "${BASE_VERSION}" =~ ^[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
             echo "Invalid base version in package.json: ${BASE_VERSION}" >&2
             exit 1
           fi
@@ -329,6 +330,14 @@ jobs:
             --out-dir "." \
             --channel nightly \
             --format scoped-target
+
+      - name: Upload manifests to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ needs.prepare.outputs.nightly_version }}" \
+            latest-*-nightly-*.json \
+            --clobber
 
       - name: Commit + push manifests
         run: |
