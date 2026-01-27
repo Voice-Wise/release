@@ -226,38 +226,41 @@ jobs:
       - name: Run Rust tests
         run: bun run test:rust
 
+      - name: Cache cargo-edit
+        id: cache-cargo-edit
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cargo/bin/cargo-set-version*
+          key: cargo-edit-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Install cargo-edit
+        if: steps.cache-cargo-edit.outputs.cache-hit != 'true'
+        run: cargo install cargo-edit --locked
+
       - name: Patch version for nightly build
-        shell: bash
         env:
           NIGHTLY_VERSION: ${{ needs.prepare.outputs.nightly_version }}
         run: |
           set -euo pipefail
+
+          # Patch package.json and tauri.conf.json
           python - <<'PY'
-          import json, os, re
+          import json, os
           from pathlib import Path
 
           version = os.environ["NIGHTLY_VERSION"].strip()
           if not version:
               raise SystemExit("Missing NIGHTLY_VERSION")
 
-          pkg_path = Path("package.json")
-          pkg = json.loads(pkg_path.read_text(encoding="utf-8"))
-          pkg["version"] = version
-          pkg_path.write_text(json.dumps(pkg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-          tauri_path = Path("src-tauri/tauri.conf.json")
-          tauri = json.loads(tauri_path.read_text(encoding="utf-8"))
-          tauri["version"] = version
-          tauri_path.write_text(json.dumps(tauri, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-          cargo_path = Path("src-tauri/Cargo.toml")
-          content = cargo_path.read_text(encoding="utf-8")
-          pattern = r'(^\\[package\\].*?^version\\s*=\\s*\")[^\"]*(\"\\s*$)'
-          new_content, count = re.subn(pattern, rf"\\g<1>{version}\\g<2>", content, count=1, flags=re.MULTILINE | re.DOTALL)
-          if count == 0:
-              raise SystemExit("Failed to patch Cargo.toml version")
-          cargo_path.write_text(new_content, encoding="utf-8", newline="\\n")
+          for path in ["package.json", "src-tauri/tauri.conf.json"]:
+              p = Path(path)
+              data = json.loads(p.read_text(encoding="utf-8"))
+              data["version"] = version
+              p.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
           PY
+
+          # Patch Cargo.toml
+          cargo set-version --manifest-path src-tauri/Cargo.toml "$NIGHTLY_VERSION"
 
       - name: Install NSIS (Windows)
         if: ${{ runner.os == 'Windows' }}
