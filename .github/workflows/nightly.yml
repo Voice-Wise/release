@@ -212,6 +212,9 @@ jobs:
           workspaces: |
             src-tauri -> target
 
+      - name: Cargo check (compile)
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
       - name: Run Rust tests
         run: bun run test:rust
 
@@ -342,4 +345,3 @@ jobs:
 
           git commit -m "chore(nightly): update manifests for v${{ needs.prepare.outputs.nightly_version }}"
           git push origin HEAD:main
-

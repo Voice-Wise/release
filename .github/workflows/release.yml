@@ -232,6 +232,9 @@ jobs:
           workspaces: |
             src-tauri -> target
 
+      - name: Cargo check (compile)
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
       - name: Run Rust tests
         run: bun run test:rust
 
