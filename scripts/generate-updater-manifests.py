@@ -119,6 +119,11 @@ def main() -> int:
     )
     parser.add_argument("--notes", default="")
     parser.add_argument(
+        "--version",
+        default="",
+        help="Explicit version string (without 'v' prefix). If not provided, derived from --tag.",
+    )
+    parser.add_argument(
         "--token-env",
         default="GITHUB_TOKEN",
         help="Name of env var containing a GitHub token for API + asset downloads",
@@ -128,9 +133,10 @@ def main() -> int:
     if args.channel == "stable":
         if not re.fullmatch(r"v\d+\.\d+\.\d+", args.tag):
             raise RuntimeError(f"Expected stable tag vX.Y.Z, got: {args.tag}")
-    else:
+    elif args.tag != "nightly":
+        # nightly channel allows fixed "nightly" tag or versioned tags
         if not re.fullmatch(r"v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", args.tag):
-            raise RuntimeError(f"Expected nightly tag vX.Y.Z(-pre)?(+meta)?, got: {args.tag}")
+            raise RuntimeError(f"Expected nightly tag vX.Y.Z(-pre)?(+meta)? or 'nightly', got: {args.tag}")
 
     token = os.environ.get(args.token_env, "")
 
@@ -147,7 +153,11 @@ def main() -> int:
     if not isinstance(assets, list):
         raise RuntimeError("Release assets payload invalid")
 
-    version = args.tag.removeprefix("v")
+    # Use explicit version if provided, otherwise derive from tag
+    if args.version:
+        version = args.version.removeprefix("v")
+    else:
+        version = args.tag.removeprefix("v")
     notes = (args.notes or "").strip()
     if not notes:
         release_html_url = release.get("html_url") or ""

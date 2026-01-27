@@ -131,12 +131,19 @@ jobs:
           echo -e "$NOTES" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
+      - name: Delete existing nightly release and tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Delete existing release if exists
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+
       - name: Create GitHub prerelease (nightly)
         id: release
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
-          tag_name: v${{ steps.version.outputs.nightly_version }}
-          name: VoiceWise Nightly v${{ steps.version.outputs.nightly_version }}
+          tag_name: nightly
+          name: VoiceWise Nightly (${{ steps.version.outputs.nightly_version }})
           body: ${{ steps.changelog.outputs.notes }}
           generate_release_notes: false
           draft: false
@@ -277,7 +284,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tauriScript: "bun run tauri"
-          tagName: v${{ needs.prepare.outputs.nightly_version }}
+          tagName: nightly
           releaseId: ${{ needs.prepare.outputs.release_id }}
           releaseBody: ""
           args: ${{ matrix.tauri_args }}
@@ -292,7 +299,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: "bun run tauri"
-          tagName: v${{ needs.prepare.outputs.nightly_version }}
+          tagName: nightly
           releaseId: ${{ needs.prepare.outputs.release_id }}
           releaseBody: ""
           args: ${{ matrix.tauri_args }}
@@ -326,7 +333,8 @@ jobs:
           python scripts/generate-updater-manifests.py \
             --owner "Voice-Wise" \
             --repo "release" \
-            --tag "v${{ needs.prepare.outputs.nightly_version }}" \
+            --tag "nightly" \
+            --version "${{ needs.prepare.outputs.nightly_version }}" \
             --out-dir "." \
             --channel nightly \
             --format scoped-target
@@ -335,7 +343,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload "v${{ needs.prepare.outputs.nightly_version }}" \
+          gh release upload "nightly" \
             latest-*-nightly-*.json \
             --clobber
 
@@ -352,5 +360,5 @@ jobs:
             exit 0
           fi
 
-          git commit -m "chore(nightly): update manifests for v${{ needs.prepare.outputs.nightly_version }}"
+          git commit -m "chore(nightly): update manifests for ${{ needs.prepare.outputs.nightly_version }}"
           git push origin HEAD:main
