@@ -55,7 +55,7 @@ jobs:
           import json
           from pathlib import Path
           v = json.loads(Path("package.json").read_text(encoding="utf-8")).get("version","").strip()
-          print(v)
+          print(v, end='')
           PY
           )"
 
