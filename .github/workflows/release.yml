@@ -325,8 +325,8 @@ jobs:
           path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
 
-  publish-stable-manifests:
-    name: Publish Stable Manifests
+  publish-manifest:
+    name: Publish Stable Manifest
     needs: [create-release, package]
     runs-on: ubuntu-latest
     permissions:
@@ -336,53 +336,39 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: main
-          fetch-depth: 0
 
-      - name: Generate stable updater manifests
+      - name: Generate combined manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-
-          # Legacy manifests (for older app builds)
-          python scripts/generate-updater-manifests.py \
-            --owner "Voice-Wise" \
-            --repo "release" \
-            --tag "v${{ needs.create-release.outputs.version }}" \
-            --out-dir "." \
-            --channel stable
-
-          # New manifests (channel encoded into target, e.g. darwin-stable)
           python scripts/generate-updater-manifests.py \
             --owner "Voice-Wise" \
             --repo "release" \
             --tag "v${{ needs.create-release.outputs.version }}" \
             --out-dir "." \
             --channel stable \
-            --format scoped-target
+            --format combined
 
-      - name: Upload manifests to release
+      - name: Upload manifest to versioned release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "v${{ needs.create-release.outputs.version }}" \
-            latest-*.stable.json \
-            latest-*-stable-*.json \
-            --clobber
+            latest.json --clobber
 
-      - name: Commit + push manifests
+      - name: Update stable tag release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          VERSION="${{ needs.create-release.outputs.version }}"
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Delete existing stable release if exists
+          gh release delete stable --yes --cleanup-tag 2>/dev/null || true
 
-          git add latest-*.stable.json
-          git add latest-*-stable-*.json
-          if git diff --cached --quiet; then
-            echo "No manifest changes."
-            exit 0
-          fi
-
-          git commit -m "chore(release): update stable manifests for v${{ needs.create-release.outputs.version }}"
-          git push origin HEAD:main
+          # Create new stable release pointing to the same tag
+          gh release create stable \
+            --title "VoiceWise Latest Stable (v${VERSION})" \
+            --notes "Latest stable release: v${VERSION}" \
+            latest.json

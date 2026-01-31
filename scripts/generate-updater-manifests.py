@@ -109,12 +109,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--format",
-        default="legacy",
-        choices=["legacy", "scoped-target"],
+        default="combined",
+        choices=["combined"],
         help=(
-            "Manifest naming format. "
-            "'legacy' writes latest-<target>-<arch>.<channel>.json with platform keys <target>-<arch>. "
-            "'scoped-target' writes latest-<target>-<channel>-<arch>.json with platform keys <target>-<channel>-<arch>."
+            "Manifest format. "
+            "'combined' writes a single latest.json with all platforms "
+            "using standard Tauri keys (e.g. darwin-aarch64)."
         ),
     )
     parser.add_argument("--notes", default="")
@@ -122,8 +122,8 @@ def main() -> int:
         "--platforms",
         default="",
         help=(
-            "Comma-separated list of os_target-arch pairs to generate manifests for "
-            "(e.g. 'darwin-aarch64,windows-x86_64'). If omitted, all platforms are generated."
+            "Comma-separated list of os_target-arch pairs to include "
+            "(e.g. 'darwin-aarch64,windows-x86_64'). If omitted, all platforms are included."
         ),
     )
     parser.add_argument(
@@ -142,7 +142,6 @@ def main() -> int:
         if not re.fullmatch(r"v\d+\.\d+\.\d+", args.tag):
             raise RuntimeError(f"Expected stable tag vX.Y.Z, got: {args.tag}")
     elif args.tag != "nightly":
-        # nightly channel allows fixed "nightly" tag or versioned tags
         if not re.fullmatch(r"v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?", args.tag):
             raise RuntimeError(f"Expected nightly tag vX.Y.Z(-pre)?(+meta)? or 'nightly', got: {args.tag}")
 
@@ -161,7 +160,6 @@ def main() -> int:
     if not isinstance(assets, list):
         raise RuntimeError("Release assets payload invalid")
 
-    # Use explicit version if provided, otherwise derive from tag
     if args.version:
         version = args.version.removeprefix("v")
     else:
@@ -174,16 +172,6 @@ def main() -> int:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-
-    def make_output_file(os_target: str, arch: str) -> str:
-        if args.format == "legacy":
-            return f"latest-{os_target}-{arch}.{args.channel}.json"
-        return f"latest-{os_target}-{args.channel}-{arch}.json"
-
-    def make_platform_key(os_target: str, arch: str) -> str:
-        if args.format == "legacy":
-            return f"{os_target}-{arch}"
-        return f"{os_target}-{args.channel}-{arch}"
 
     targets = [
         {
@@ -220,6 +208,9 @@ def main() -> int:
                 f"No targets matched --platforms filter: {args.platforms}"
             )
 
+    # Build combined manifest with all platforms in one file
+    all_platforms: dict[str, dict] = {}
+
     for target in targets:
         os_target = target["os_target"]
         arch_canonical = target["arch_canonical"]
@@ -244,7 +235,13 @@ def main() -> int:
                 break
 
         if updater_asset is None:
-            raise last_error or RuntimeError("Failed to locate updater asset")
+            # Skip missing platforms (e.g. Windows temporarily disabled)
+            print(
+                f"[generate-updater-manifests] skipping {os_target}-{arch_canonical}: "
+                f"{last_error or 'no matching asset'}",
+                file=sys.stderr,
+            )
+            continue
 
         sig_asset = _find_signature_asset(
             assets=assets,
@@ -255,29 +252,32 @@ def main() -> int:
         )
 
         sig_bytes = _download_github_release_asset(sig_asset["url"], token=token)
-        # The .sig file already contains base64-encoded minisign signature
-        # Do NOT re-encode it, just decode the bytes to string
         sig_content = sig_bytes.decode("utf-8").strip()
 
-        platform_key = make_platform_key(os_target, arch_canonical)
-        manifest = {
-            "version": version,
-            "pub_date": published_at,
-            "platforms": {
-                platform_key: {
-                    "signature": sig_content,
-                    "url": updater_asset["browser_download_url"],
-                }
-            },
-            "notes": notes,
+        # Standard Tauri platform key: {os_target}-{arch}
+        platform_key = f"{os_target}-{arch_canonical}"
+        all_platforms[platform_key] = {
+            "signature": sig_content,
+            "url": updater_asset["browser_download_url"],
         }
 
-        out_path = out_dir / make_output_file(os_target, arch_canonical)
-        out_path.write_text(
-            json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
+    if not all_platforms:
+        raise RuntimeError("No platform assets found — cannot generate manifest")
 
+    manifest = {
+        "version": version,
+        "pub_date": published_at,
+        "platforms": all_platforms,
+        "notes": notes,
+    }
+
+    out_path = out_dir / "latest.json"
+    out_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    print(f"[generate-updater-manifests] wrote {out_path} with platforms: {', '.join(sorted(all_platforms))}")
     return 0
 
 
