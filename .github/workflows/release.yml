@@ -186,13 +186,14 @@ jobs:
               src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
               src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz*
 
-          - name: Windows (x86_64)
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            tauri_args: --target x86_64-pc-windows-msvc --bundles nsis
-            artifact_name: voicewise-windows-x86_64-pc-windows-msvc
-            artifact_paths: |
-              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe*
+          # Windows build temporarily disabled due to slow CI times
+          # - name: Windows (x86_64)
+          #   os: windows-latest
+          #   target: x86_64-pc-windows-msvc
+          #   tauri_args: --target x86_64-pc-windows-msvc --bundles nsis
+          #   artifact_name: voicewise-windows-x86_64-pc-windows-msvc
+          #   artifact_paths: |
+          #     src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe*
 
     steps:
       - name: Checkout private source code
