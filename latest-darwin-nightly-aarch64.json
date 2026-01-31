@@ -1,11 +1,11 @@
 {
-  "version": "0.1.29-nightly.20260131.19724ff",
+  "version": "0.1.29-nightly.20260131.832c09a",
   "pub_date": "2026-01-27T14:24:09Z",
   "platforms": {
     "darwin-nightly-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSeDQ4MXMrTjV1VU9Nb2Z3cUpHb3k1cUl3RGtmT3V4eHdQR1JlRUJVc1BOODlONm9CSDBxZ0IxT2hYelBZUFJ1My9zV0VCSFNVTTVKQUdrMkEzbjRueXNGMUpxOERoSndrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5ODM2ODg0CWZpbGU6Vm9pY2VXaXNlLmFwcC50YXIuZ3oKZmJwcXZ6QUNZQVJpWnFuSXEzaHNBY1Vrb25XWFVBb0x4L1NvMWJaZERtcjV0ZVlLS2JvWlk1UEo5MnNiTk1pZjJtQUNrMUp0eGFTWkNKTndNc2NlQ0E9PQo=",
-      "url": "https://github.com/Voice-Wise/release/releases/download/nightly/VoiceWise_0.1.29-nightly.20260131.19724ff_darwin_aarch64.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSeDQ4MXMrTjV1VUZLMmw5cWl4emNGTkRQTmFPd3ZKaUlnbUhPMkVsSWsydUgyQy9pZkxZUkZINERMWlpQRm50NFBNWGUwR2ZNQUlnb0ovUXBrSjlrSm1icGY3QlBabkFrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5ODM4NjkwCWZpbGU6Vm9pY2VXaXNlLmFwcC50YXIuZ3oKVzBDL2wwejhIc1I5ZHJxc1JJZVlnVThSZmFrY0ZPV09kUjlxVVFNcDlyZkpvby9ha0x3Z3ZDTER3L0FJWkI0eWM3UjRPZENxTUlYQS9ZalBmTDZXRGc9PQo=",
+      "url": "https://github.com/Voice-Wise/release/releases/download/nightly/VoiceWise_0.1.29-nightly.20260131.832c09a_darwin_aarch64.app.tar.gz"
     }
   },
-  "notes": "VoiceWise v0.1.29-nightly.20260131.19724ff（Nightly）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/nightly"
+  "notes": "VoiceWise v0.1.29-nightly.20260131.832c09a（Nightly）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/nightly"
 }
