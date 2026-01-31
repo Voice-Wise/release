@@ -71,10 +71,9 @@ jobs:
           PATCH="${REST#*.}"
 
           NEXT_PATCH="$((PATCH + 1))"
-          DATE_UTC="$(date -u +%Y%m%d)"
-          SHA="$(git rev-parse --short=7 HEAD)"
 
-          NIGHTLY_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}-nightly.${DATE_UTC}.${SHA}"
+          # Use fixed nightly version without date/SHA to ensure file overwrites
+          NIGHTLY_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}-nightly"
           echo "nightly_version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Nightly version: ${NIGHTLY_VERSION}"
 
