@@ -396,18 +396,23 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+          git add latest-*-nightly-*.json
+          if git diff --cached --quiet; then
+            echo "No manifest changes."
+            exit 0
+          fi
+
+          git commit -m "chore(nightly): update manifest for ${{ matrix.os_target }}-${{ matrix.arch }} (${{ needs.prepare.outputs.nightly_version }})"
+
           for attempt in 1 2 3; do
-            git pull --rebase origin main
-            git add latest-*-nightly-*.json
-            if git diff --cached --quiet; then
-              echo "No manifest changes."
-              break
-            fi
-            git commit -m "chore(nightly): update manifest for ${{ matrix.os_target }}-${{ matrix.arch }} (${{ needs.prepare.outputs.nightly_version }})"
             if git push origin HEAD:main; then
               echo "Push succeeded on attempt $attempt."
-              break
+              exit 0
             fi
-            echo "Push failed on attempt $attempt, retrying..."
+            echo "Push failed on attempt $attempt, rebasing and retrying..."
+            git pull --rebase origin main
             sleep $((attempt * 2))
           done
+
+          echo "Push failed after 3 attempts."
+          exit 1
