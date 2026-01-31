@@ -1,0 +1,11 @@
+{
+  "version": "0.1.29-nightly.20260131.19724ff",
+  "pub_date": "2026-01-27T14:24:09Z",
+  "platforms": {
+    "darwin-nightly-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSeDQ4MXMrTjV1VUtnUDdzRmpoY2s5T05ybHc2Ulc3akJYd2ZCZURUVmlzOTNXbXNRWDJ0bCtoZ3llN2VxSDVnaVBpTmhnYVErRDBaRmE0WlF6YmtmcGw1ZEVTREVtaWcwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY5ODM1OTU1CWZpbGU6Vm9pY2VXaXNlLmFwcC50YXIuZ3oKZGpIbXRHLzJCU3VON2RRbXZrV2VEM0NSd3Vta2NmblUxOXk5UWhENUpybm4rbDFNdEYvODQ4TlppNUJYTVA0TFZKVGwwL3NCWFYweTd5UUhQcUVGQVE9PQo=",
+      "url": "https://github.com/Voice-Wise/release/releases/download/nightly/VoiceWise_0.1.29-nightly.20260131.19724ff_darwin_x64.app.tar.gz"
+    }
+  },
+  "notes": "VoiceWise v0.1.29-nightly.20260131.19724ff（Nightly）\n\n更新说明请查看：https://github.com/Voice-Wise/release/releases/tag/nightly"
+}
