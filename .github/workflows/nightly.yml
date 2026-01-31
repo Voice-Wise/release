@@ -162,6 +162,8 @@ jobs:
           - name: macOS (aarch64)
             os: macos-latest
             target: aarch64-apple-darwin
+            os_target: darwin
+            arch: aarch64
             tauri_args: --target aarch64-apple-darwin
             artifact_name: voicewise-nightly-macos-aarch64-apple-darwin
             artifact_paths: |
@@ -171,6 +173,8 @@ jobs:
           - name: macOS (x86_64)
             os: macos-latest
             target: x86_64-apple-darwin
+            os_target: darwin
+            arch: x86_64
             tauri_args: --target x86_64-apple-darwin
             artifact_name: voicewise-nightly-macos-x86_64-apple-darwin
             artifact_paths: |
@@ -180,6 +184,8 @@ jobs:
           - name: Windows (x86_64)
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            os_target: windows
+            arch: x86_64
             tauri_args: --target x86_64-pc-windows-msvc --bundles nsis
             artifact_name: voicewise-nightly-windows-x86_64-pc-windows-msvc
             artifact_paths: |
@@ -223,9 +229,6 @@ jobs:
         with:
           workspaces: |
             src-tauri -> target
-
-      - name: Cargo check (compile)
-        run: cargo check --manifest-path src-tauri/Cargo.toml
 
       - name: Run Rust tests
         run: bun run test:rust
@@ -319,53 +322,60 @@ jobs:
           path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
 
-  publish-nightly-manifests:
-    name: Publish Nightly Manifests
-    needs: [prepare, package]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
       - name: Checkout release repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: main
           fetch-depth: 0
+          path: release-repo
 
-      - name: Generate nightly updater manifests
+      - name: Generate manifest for ${{ matrix.os_target }}-${{ matrix.arch }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           set -euo pipefail
-          python scripts/generate-updater-manifests.py \
+          python release-repo/scripts/generate-updater-manifests.py \
             --owner "Voice-Wise" \
             --repo "release" \
             --tag "nightly" \
             --version "${{ needs.prepare.outputs.nightly_version }}" \
-            --out-dir "." \
+            --out-dir "release-repo" \
             --channel nightly \
-            --format scoped-target
+            --format scoped-target \
+            --platforms "${{ matrix.os_target }}-${{ matrix.arch }}"
 
-      - name: Upload manifests to release
+      - name: Upload manifest to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        working-directory: release-repo
         run: |
           gh release upload "nightly" \
             latest-*-nightly-*.json \
             --clobber
 
-      - name: Commit + push manifests
+      - name: Commit + push manifest
+        shell: bash
+        working-directory: release-repo
         run: |
           set -euo pipefail
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git add latest-*-nightly-*.json
-          if git diff --cached --quiet; then
-            echo "No manifest changes."
-            exit 0
-          fi
-
-          git commit -m "chore(nightly): update manifests for ${{ needs.prepare.outputs.nightly_version }}"
-          git push origin HEAD:main
+          for attempt in 1 2 3; do
+            git pull --rebase origin main
+            git add latest-*-nightly-*.json
+            if git diff --cached --quiet; then
+              echo "No manifest changes."
+              break
+            fi
+            git commit -m "chore(nightly): update manifest for ${{ matrix.os_target }}-${{ matrix.arch }} (${{ needs.prepare.outputs.nightly_version }})"
+            if git push origin HEAD:main; then
+              echo "Push succeeded on attempt $attempt."
+              break
+            fi
+            echo "Push failed on attempt $attempt, retrying..."
+            sleep $((attempt * 2))
+          done

@@ -119,6 +119,14 @@ def main() -> int:
     )
     parser.add_argument("--notes", default="")
     parser.add_argument(
+        "--platforms",
+        default="",
+        help=(
+            "Comma-separated list of os_target-arch pairs to generate manifests for "
+            "(e.g. 'darwin-aarch64,windows-x86_64'). If omitted, all platforms are generated."
+        ),
+    )
+    parser.add_argument(
         "--version",
         default="",
         help="Explicit version string (without 'v' prefix). If not provided, derived from --tag.",
@@ -200,6 +208,17 @@ def main() -> int:
             "extensions": [".exe"],
         },
     ]
+
+    if args.platforms:
+        platform_filter = set(p.strip() for p in args.platforms.split(",") if p.strip())
+        targets = [
+            t for t in targets
+            if f"{t['os_target']}-{t['arch_canonical']}" in platform_filter
+        ]
+        if not targets:
+            raise RuntimeError(
+                f"No targets matched --platforms filter: {args.platforms}"
+            )
 
     for target in targets:
         os_target = target["os_target"]
