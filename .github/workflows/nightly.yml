@@ -202,6 +202,24 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         run: git config --system core.longpaths true
 
+      - name: Optimize I/O for Windows (use D: drive)
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          # Move Cargo/Rust files to D: drive for better I/O performance
+          # GitHub Windows runners have slow C: drive I/O, D: is temp storage with better speed
+          $cargoHome = "D:\a\_cargo"
+          $cargoTargetDir = "D:\a\_cargo-target"
+          $bunCache = "D:\a\_bun-cache"
+          
+          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
+          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
+          
+          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
+          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
         with:
@@ -210,7 +228,9 @@ jobs:
       - name: Cache Bun
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
-          path: ~/.bun/install/cache
+          path: |
+            ~/.bun/install/cache
+            D:\a\_bun-cache
           key: ${{ runner.os }}-${{ matrix.target }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-bun-
@@ -228,6 +248,9 @@ jobs:
         with:
           workspaces: |
             src-tauri -> target
+          env-vars: |
+            CARGO_HOME
+            CARGO_TARGET_DIR
 
       - name: Run Rust tests
         run: bun run test:rust
