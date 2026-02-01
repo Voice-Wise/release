@@ -212,9 +212,9 @@ jobs:
         run: |
           # Move Cargo/Rust files to D: drive for better I/O performance
           # GitHub Windows runners have slow C: drive I/O, D: is temp storage with better speed
-          $cargoHome = "D:\a\_cargo"
-          $cargoTargetDir = "D:\a\_cargo-target"
-          $bunCache = "D:\a\_bun-cache"
+          $cargoHome = 'D:\a\_cargo'
+          $cargoTargetDir = 'D:\a\_cargo-target'
+          $bunCache = 'D:\a\_bun-cache'
           
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
