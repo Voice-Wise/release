@@ -112,7 +112,7 @@ jobs:
           "
           else
             # Build the prompt
-            PROMPT="Based on the following git commit messages, generate a concise and user-friendly changelog in BOTH Chinese (Simplified) and English. First output the Chinese version, then add a horizontal rule (---), then output the English version. Group changes by category (e.g., ✨ 新功能/New Features, 🐛 问题修复/Bug Fixes, ⚡ 性能优化/Performance, 🔧 其他改进/Other Improvements). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.
+            PROMPT="Based on the following git commit messages, generate a concise and user-friendly changelog in BOTH Chinese (Simplified) and English. First output the Chinese version, then add a horizontal rule (---), then output the English version. Group changes by category (e.g., 鉁?鏂板姛鑳?New Features, 馃悰 闂淇/Bug Fixes, 鈿?鎬ц兘浼樺寲/Performance, 馃敡 鍏朵粬鏀硅繘/Other Improvements). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.
 
           Commit messages:
           $COMMITS"
@@ -133,7 +133,7 @@ jobs:
               # Fallback to generic message (don't expose raw commit messages)
               NOTES="## Changelog
 
-          See release for details. / 详见发布说明。
+          See release for details. / 璇﹁鍙戝竷璇存槑銆?
           "
             else
               NOTES="## Changelog
@@ -210,16 +210,12 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         run: |
-          # Move Cargo/Rust files to D: drive for better I/O performance
-          # GitHub Windows runners have slow C: drive I/O, D: is temp storage with better speed
           $cargoHome = "D:/a/_cargo"
           $cargoTargetDir = "D:/a/_cargo-target"
           $bunCache = "D:/a/_bun-cache"
-          
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
           New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
-          
           echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
           echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
           echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
