@@ -206,7 +206,7 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         run: git config --system core.longpaths true
 
-      - name: Optimize I/O for Windows (use D: drive)
+      - name: "Optimize I/O for Windows (use D: drive)"
         if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         run: |
