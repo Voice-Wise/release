@@ -265,6 +265,7 @@ jobs:
       - name: Patch version for nightly build
         env:
           NIGHTLY_VERSION: ${{ needs.prepare.outputs.nightly_version }}
+        shell: bash
         run: |
           set -euo pipefail
 
