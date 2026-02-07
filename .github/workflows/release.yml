@@ -15,13 +15,12 @@ on:
         type: string
 
 jobs:
-  create-release:
-    name: Create Release
+  prepare:
+    name: Prepare Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
-      release_id: ${{ steps.release.outputs.id }}
       release_body: ${{ steps.changelog.outputs.notes }}
       version: ${{ steps.params.outputs.version }}
       ref: ${{ steps.params.outputs.ref }}
@@ -147,13 +146,108 @@ jobs:
           echo "$NOTES" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
+  test:
+    name: Test (${{ matrix.name }})
+    needs: [prepare]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (aarch64)
+            os: macos-latest
+            target: aarch64-apple-darwin
+
+          - name: macOS (x86_64)
+            os: macos-latest
+            target: x86_64-apple-darwin
+
+          - name: Windows (x86_64)
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Checkout private source code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+
+      - name: Enable git long paths (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: git config --system core.longpaths true
+
+      - name: "Optimize I/O for Windows (use D: drive)"
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $cargoHome = "D:/a/_cargo"
+          $cargoTargetDir = "D:/a/_cargo-target"
+          $bunCache = "D:/a/_bun-cache"
+          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
+          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
+          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
+          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
+        with:
+          bun-version: "1.3.2"
+
+      - name: Cache Bun
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.bun/install/cache
+            D:/a/_bun-cache
+          key: ${{ runner.os }}-${{ matrix.target }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run FE tests
+        run: bun run test:fe
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        with:
+          workspaces: |
+            src-tauri -> target
+          env-vars: |
+            CARGO_HOME
+            CARGO_TARGET_DIR
+
+      - name: Run Rust tests
+        run: bun run test:rust
+
+  create-release:
+    name: Create Release
+    needs: [prepare, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+      version: ${{ needs.prepare.outputs.version }}
+      ref: ${{ needs.prepare.outputs.ref }}
+    steps:
       - name: Create GitHub release
         id: release
         uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
-          tag_name: v${{ steps.params.outputs.version }}
-          name: VoiceWise v${{ steps.params.outputs.version }}
-          body: ${{ steps.changelog.outputs.notes }}
+          tag_name: v${{ needs.prepare.outputs.version }}
+          name: VoiceWise v${{ needs.prepare.outputs.version }}
+          body: ${{ needs.prepare.outputs.release_body }}
           generate_release_notes: false
           draft: false
           prerelease: false
@@ -238,9 +332,6 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run FE tests
-        run: bun run test:fe
-
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -254,9 +345,6 @@ jobs:
           env-vars: |
             CARGO_HOME
             CARGO_TARGET_DIR
-
-      - name: Run Rust tests
-        run: bun run test:rust
 
       - name: Install NSIS (Windows)
         if: ${{ runner.os == 'Windows' }}
