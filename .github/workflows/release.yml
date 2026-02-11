@@ -475,6 +475,7 @@ jobs:
 
           # Create new stable release pointing to the same tag
           gh release create stable \
+            --target "v${VERSION}" \
             --title "VoiceWise Latest Stable (v${VERSION})" \
             --notes "Latest stable release: v${VERSION}" \
             latest.json

@@ -225,8 +225,25 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Delete existing release if exists
-          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY}"
+
+          if gh release view nightly >/dev/null 2>&1; then
+            gh release delete nightly --yes --cleanup-tag
+          fi
+
+          LEGACY_NIGHTLY_TAGS="$(gh release list --limit 200 --json tagName --jq '.[] | .tagName | select(. != "nightly" and test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly([.-].*)?$"))')"
+          if [[ -n "${LEGACY_NIGHTLY_TAGS}" ]]; then
+            while IFS= read -r tag; do
+              [[ -z "${tag}" ]] && continue
+              echo "Delete legacy nightly release/tag: ${tag}"
+              gh release delete "${tag}" --yes --cleanup-tag
+            done <<< "${LEGACY_NIGHTLY_TAGS}"
+          fi
+
+          if gh api "repos/${REPO}/git/ref/tags/nightly" >/dev/null 2>&1; then
+            gh api -X DELETE "repos/${REPO}/git/refs/tags/nightly"
+          fi
 
       - name: Create GitHub prerelease (nightly)
         id: release
@@ -503,4 +520,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload nightly latest.json --clobber
+          if ! gh release upload nightly latest.json --clobber; then
+            echo "上传 nightly/latest.json 失败，请检查 nightly release/tag 是否创建成功" >&2
+            exit 1
+          fi
