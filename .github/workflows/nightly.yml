@@ -228,16 +228,16 @@ jobs:
           set -euo pipefail
           REPO="${GITHUB_REPOSITORY}"
 
-          if gh release view nightly >/dev/null 2>&1; then
-            gh release delete nightly --yes --cleanup-tag
+          if gh release view nightly --repo "${REPO}" >/dev/null 2>&1; then
+            gh release delete nightly --repo "${REPO}" --yes --cleanup-tag
           fi
 
-          LEGACY_NIGHTLY_TAGS="$(gh release list --limit 200 --json tagName --jq '.[] | .tagName | select(. != "nightly" and test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly([.-].*)?$"))')"
+          LEGACY_NIGHTLY_TAGS="$(gh release list --repo "${REPO}" --limit 200 --json tagName --jq '.[] | .tagName | select(. != "nightly" and test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly([.-].*)?$"))')"
           if [[ -n "${LEGACY_NIGHTLY_TAGS}" ]]; then
             while IFS= read -r tag; do
               [[ -z "${tag}" ]] && continue
               echo "Delete legacy nightly release/tag: ${tag}"
-              gh release delete "${tag}" --yes --cleanup-tag
+              gh release delete "${tag}" --repo "${REPO}" --yes --cleanup-tag
             done <<< "${LEGACY_NIGHTLY_TAGS}"
           fi
 
