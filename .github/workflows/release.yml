@@ -258,6 +258,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+    env:
+      SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.version }}
+      SENTRY_DIST: stable-${{ github.run_number }}-${{ github.run_attempt }}
+      VITE_SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.version }}
+      VITE_SENTRY_DIST: stable-${{ github.run_number }}-${{ github.run_attempt }}
     strategy:
       fail-fast: false
       matrix:
@@ -424,6 +429,58 @@ jobs:
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
+      - name: Collect debug symbols (macOS)
+        if: ${{ runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT_DIR="$RUNNER_TEMP/sentry-debug/${{ matrix.target }}"
+          SEARCH_ROOT="src-tauri/target/${{ matrix.target }}/release"
+          mkdir -p "$OUTPUT_DIR"
+          touch "$OUTPUT_DIR/.keep"
+
+          if [[ -d "$SEARCH_ROOT" ]]; then
+            while IFS= read -r -d '' symbol_dir; do
+              cp -R "$symbol_dir" "$OUTPUT_DIR/"
+            done < <(find "$SEARCH_ROOT" -type d -name '*.dSYM' -print0)
+          fi
+
+      - name: Collect debug symbols (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $outputDir = Join-Path $env:RUNNER_TEMP "sentry-debug/${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+          New-Item -ItemType File -Force -Path (Join-Path $outputDir ".keep") | Out-Null
+
+          $searchRoots = @(
+            "src-tauri/target/${{ matrix.target }}/release",
+            "D:/a/_cargo-target/${{ matrix.target }}/release"
+          )
+
+          foreach ($root in $searchRoots) {
+            if (Test-Path $root) {
+              Get-ChildItem -Path $root -Filter *.pdb -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+                Copy-Item -Path $_.FullName -Destination $outputDir -Force
+              }
+            }
+          }
+
+      - name: Upload Sentry debug symbols artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentry-debug-${{ matrix.target }}
+          path: ${{ runner.temp }}/sentry-debug/${{ matrix.target }}
+          if-no-files-found: warn
+
+      - name: Upload Sentry sourcemap artifact
+        if: ${{ matrix.target == 'aarch64-apple-darwin' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentry-dist
+          path: dist
+          if-no-files-found: error
+
       - name: Upload artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -431,9 +488,40 @@ jobs:
           path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
 
+  sentry-release:
+    name: Upload Sentry Assets
+    needs: [create-release, package]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Download Sentry sourcemap artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: sentry-dist
+          path: ${{ runner.temp }}/sentry/dist
+
+      - name: Download Sentry debug artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sentry-debug-*
+          path: ${{ runner.temp }}/sentry/debug
+          merge-multiple: true
+
+      - name: Upload source map and debug symbols to Sentry
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.version }}
+          SENTRY_DIST: stable-${{ github.run_number }}-${{ github.run_attempt }}
+          SENTRY_SOURCEMAP_DIR: ${{ runner.temp }}/sentry/dist
+          SENTRY_DEBUG_ROOT: ${{ runner.temp }}/sentry/debug
+        run: |
+          bash scripts/upload-sentry-release-assets.sh
+
   publish-manifest:
     name: Publish Stable Manifest
-    needs: [create-release, package]
+    needs: [create-release, package, sentry-release]
     runs-on: ubuntu-latest
     permissions:
       contents: write
