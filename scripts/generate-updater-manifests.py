@@ -54,6 +54,34 @@ def _find_updater_asset(
     )
 
 
+def _find_installer_asset(
+    assets: list[dict],
+    version: str,
+    platform_aliases: list[str],
+    arch: str,
+    extension: str,
+) -> dict:
+    platform_re = "|".join(re.escape(p) for p in platform_aliases)
+    strict_pattern = re.compile(
+        rf"^.+_{re.escape(version)}_({platform_re})_{re.escape(arch)}.*{re.escape(extension)}$"
+    )
+    strict_candidates = [a for a in assets if strict_pattern.match(a.get("name", ""))]
+    if strict_candidates:
+        return _pick_one(
+            strict_candidates,
+            f"installer strict match version={version} platform={platform_aliases} arch={arch} ext={extension}",
+        )
+
+    relaxed_pattern = re.compile(
+        rf"^.+_{re.escape(version)}_{re.escape(arch)}.*{re.escape(extension)}$"
+    )
+    relaxed_candidates = [a for a in assets if relaxed_pattern.match(a.get("name", ""))]
+    return _pick_one(
+        relaxed_candidates,
+        f"installer relaxed match version={version} arch={arch} ext={extension}",
+    )
+
+
 def _find_signature_asset(
     assets: list[dict],
     version: str,
@@ -180,6 +208,7 @@ def main() -> int:
             "platform_aliases": ["macos", "darwin"],
             "arch_aliases": ["aarch64", "arm64"],
             "extensions": [".app.tar.gz", ".tar.gz"],
+            "installer_extensions": [".dmg"],
         },
         {
             "os_target": "darwin",
@@ -187,6 +216,7 @@ def main() -> int:
             "platform_aliases": ["macos", "darwin"],
             "arch_aliases": ["x86_64", "x64"],
             "extensions": [".app.tar.gz", ".tar.gz"],
+            "installer_extensions": [".dmg"],
         },
         {
             "os_target": "windows",
@@ -194,6 +224,7 @@ def main() -> int:
             "platform_aliases": ["windows"],
             "arch_aliases": ["x86_64", "x64"],
             "extensions": [".exe"],
+            "installer_extensions": [".exe"],
         },
     ]
 
@@ -210,6 +241,7 @@ def main() -> int:
 
     # Build combined manifest with all platforms in one file
     all_platforms: dict[str, dict] = {}
+    installer_platforms: dict[str, dict] = {}
 
     for target in targets:
         os_target = target["os_target"]
@@ -261,13 +293,48 @@ def main() -> int:
             "url": updater_asset["browser_download_url"],
         }
 
+        installer_asset = None
+        installer_last_error: Exception | None = None
+        for arch in target["arch_aliases"]:
+            for ext in target["installer_extensions"]:
+                try:
+                    installer_asset = _find_installer_asset(
+                        assets=assets,
+                        version=version,
+                        platform_aliases=target["platform_aliases"],
+                        arch=arch,
+                        extension=ext,
+                    )
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    installer_last_error = exc
+            if installer_asset is not None:
+                break
+
+        if installer_asset is None:
+            print(
+                f"[generate-updater-manifests] skipping installer {os_target}-{arch_canonical}: "
+                f"{installer_last_error or 'no matching asset'}",
+                file=sys.stderr,
+            )
+            continue
+
+        installer_platforms[platform_key] = {
+            "url": installer_asset["browser_download_url"],
+        }
+
     if not all_platforms:
         raise RuntimeError("No platform assets found — cannot generate manifest")
+    if not installer_platforms:
+        raise RuntimeError("No installer assets found — cannot generate manifest installers section")
 
     manifest = {
         "version": version,
         "pub_date": published_at,
         "platforms": all_platforms,
+        "installers": {
+            "platform_installers": installer_platforms,
+        },
         "notes": notes,
     }
 
@@ -278,6 +345,7 @@ def main() -> int:
     )
 
     print(f"[generate-updater-manifests] wrote {out_path} with platforms: {', '.join(sorted(all_platforms))}")
+    print(f"[generate-updater-manifests] embedded installers for platforms: {', '.join(sorted(installer_platforms))}")
     return 0
 
 
