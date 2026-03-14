@@ -20,9 +20,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
-    name: Run CI Tests
-    runs-on: macos-latest
+  prepare:
+    name: Prepare CI
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.params.outputs.sha }}
+      ref: ${{ steps.params.outputs.ref }}
+      sender_repo: ${{ steps.params.outputs.sender_repo }}
     steps:
       - name: Get parameters
         id: params
@@ -53,12 +57,49 @@ jobs:
               "context": "ci/cross-repo"
             }'
 
+  ci:
+    name: Run CI (${{ matrix.name }})
+    needs: [prepare]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            run_frontend: true
+            run_build: true
+
+          - name: Windows
+            os: windows-latest
+            run_frontend: false
+            run_build: false
+
+    steps:
       - name: Checkout private source code
         uses: actions/checkout@v4
         with:
           repository: Voice-Wise/VoiceWise
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ steps.params.outputs.sha }}
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - name: Enable git long paths (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: git config --system core.longpaths true
+
+      - name: "Optimize I/O for Windows (use D: drive)"
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $cargoHome = "D:/a/_cargo"
+          $cargoTargetDir = "D:/a/_cargo-target"
+          $bunCache = "D:/a/_bun-cache"
+          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
+          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
+          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
+          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -68,7 +109,9 @@ jobs:
       - name: Cache Bun
         uses: actions/cache@v4
         with:
-          path: ~/.bun/install/cache
+          path: |
+            ~/.bun/install/cache
+            D:/a/_bun-cache
           key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-bun-
@@ -84,18 +127,32 @@ jobs:
         with:
           workspaces: |
             src-tauri -> target
+          env-vars: |
+            CARGO_HOME
+            CARGO_TARGET_DIR
 
       - name: Run Rust tests
         run: bun run test:rust
 
+      - name: Run functional tests
+        run: bun run test:functional
+
       - name: Run frontend unit tests
+        if: ${{ matrix.run_frontend }}
         run: bun run test:fe
 
       - name: Build frontend
+        if: ${{ matrix.run_build }}
         run: bun run build
 
+  finalize:
+    name: Report CI Status
+    if: ${{ always() }}
+    needs: [prepare, ci]
+    runs-on: ubuntu-latest
+    steps:
       - name: Set commit status (success)
-        if: success()
+        if: ${{ needs.ci.result == 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
@@ -103,7 +160,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${{ steps.params.outputs.sender_repo }}/statuses/${{ steps.params.outputs.sha }}" \
+            "https://api.github.com/repos/${{ needs.prepare.outputs.sender_repo }}/statuses/${{ needs.prepare.outputs.sha }}" \
             -d '{
               "state": "success",
               "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
@@ -112,7 +169,7 @@ jobs:
             }'
 
       - name: Set commit status (failure)
-        if: failure()
+        if: ${{ needs.ci.result != 'success' }}
         env:
           GITHUB_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
         run: |
@@ -120,7 +177,7 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             -H "Authorization: Bearer $GITHUB_TOKEN" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/${{ steps.params.outputs.sender_repo }}/statuses/${{ steps.params.outputs.sha }}" \
+            "https://api.github.com/repos/${{ needs.prepare.outputs.sender_repo }}/statuses/${{ needs.prepare.outputs.sha }}" \
             -d '{
               "state": "failure",
               "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
