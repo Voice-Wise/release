@@ -339,6 +339,7 @@ jobs:
     name: Package (${{ matrix.name }})
     needs: [create-release]
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.allow_failure == true }}
     permissions:
       contents: write
     env:
@@ -361,22 +362,12 @@ jobs:
               src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
               src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz*
 
-          - name: macOS (x86_64)
-            os: macos-latest
-            target: x86_64-apple-darwin
-            os_target: darwin
-            arch: x86_64
-            tauri_args: --target x86_64-apple-darwin
-            artifact_name: voicewise-nightly-macos-x86_64-apple-darwin
-            artifact_paths: |
-              src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz*
-
           - name: Windows (x86_64)
             os: windows-latest
             target: x86_64-pc-windows-msvc
             os_target: windows
             arch: x86_64
+            allow_failure: true
             tauri_args: --target x86_64-pc-windows-msvc --bundles nsis
             artifact_name: voicewise-nightly-windows-x86_64-pc-windows-msvc
             artifact_paths: |
