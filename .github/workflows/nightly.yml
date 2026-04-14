@@ -10,6 +10,11 @@ on:
         required: false
         default: "master"
         type: string
+      skip_windows:
+        description: "Skip optional Windows validation jobs"
+        required: false
+        default: true
+        type: boolean
 
 concurrency:
   group: nightly-${{ github.workflow }}-${{ github.ref }}
@@ -24,6 +29,7 @@ jobs:
     outputs:
       nightly_version: ${{ steps.version.outputs.nightly_version }}
       ref: ${{ steps.params.outputs.ref }}
+      skip_windows: ${{ steps.params.outputs.skip_windows }}
       release_body: ${{ steps.changelog.outputs.notes }}
     steps:
       - name: Get build parameters
@@ -32,9 +38,21 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
             echo "ref=${{ github.event.client_payload.ref }}" >> $GITHUB_OUTPUT
+            skip_windows='${{ github.event.client_payload.skip_windows }}'
           else
             echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
+            skip_windows='${{ inputs.skip_windows }}'
           fi
+
+          skip_windows="$(printf '%s' "${skip_windows:-true}" | tr '[:upper:]' '[:lower:]')"
+          case "${skip_windows}" in
+            true|1|yes)
+              echo "skip_windows=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "skip_windows=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
       - name: Checkout private source code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -145,10 +163,6 @@ jobs:
             os: macos-latest
             target: x86_64-apple-darwin
 
-          - name: Windows (x86_64)
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-
     steps:
       - name: Checkout private source code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -156,24 +170,6 @@ jobs:
           repository: Voice-Wise/VoiceWise
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.prepare.outputs.ref }}
-
-      - name: Enable git long paths (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        run: git config --system core.longpaths true
-
-      - name: "Optimize I/O for Windows (use D: drive)"
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
@@ -213,6 +209,74 @@ jobs:
       - name: Run functional tests
         run: bun run test:functional
 
+  test-windows:
+    name: Test (Windows (x86_64))
+    needs: [prepare]
+    if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout private source code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+
+      - name: Enable git long paths (Windows)
+        run: git config --system core.longpaths true
+
+      - name: "Optimize I/O for Windows (use D: drive)"
+        shell: pwsh
+        run: |
+          $cargoHome = "D:/a/_cargo"
+          $cargoTargetDir = "D:/a/_cargo-target"
+          $bunCache = "D:/a/_bun-cache"
+          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
+          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
+          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
+          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
+          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
+        with:
+          bun-version: "1.3.2"
+
+      - name: Cache Bun
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.bun/install/cache
+            D:/a/_bun-cache
+          key: ${{ runner.os }}-x86_64-pc-windows-msvc-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-x86_64-pc-windows-msvc-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        with:
+          workspaces: |
+            src-tauri -> target
+          env-vars: |
+            CARGO_HOME
+            CARGO_TARGET_DIR
+
+      - name: Run Rust tests
+        run: bun run test:rust
+
+      - name: Run functional tests
+        run: bun run test:functional
+
   cloud-regression:
     name: Cloud Regression (${{ matrix.name }})
     needs: [prepare]
@@ -223,9 +287,6 @@ jobs:
         include:
           - name: macOS
             os: macos-latest
-
-          - name: Windows
-            os: windows-latest
 
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
@@ -238,12 +299,59 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.prepare.outputs.ref }}
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
+        with:
+          bun-version: "1.3.2"
+
+      - name: Cache Bun
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: |
+            ~/.bun/install/cache
+            D:/a/_bun-cache
+          key: ${{ runner.os }}-cloud-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cloud-bun-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        with:
+          workspaces: |
+            src-tauri -> target
+          env-vars: |
+            CARGO_HOME
+            CARGO_TARGET_DIR
+
+      - name: Run cloud functional tests
+        run: bun run test:functional:cloud
+
+  cloud-regression-windows:
+    name: Cloud Regression (Windows)
+    needs: [prepare]
+    if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
+    runs-on: windows-latest
+    continue-on-error: true
+    env:
+      VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
+    steps:
+      - name: Checkout private source code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+
       - name: Enable git long paths (Windows)
-        if: ${{ runner.os == 'Windows' }}
         run: git config --system core.longpaths true
 
       - name: "Optimize I/O for Windows (use D: drive)"
-        if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         run: |
           $cargoHome = "D:/a/_cargo"
@@ -299,6 +407,7 @@ jobs:
       release_id: ${{ steps.release.outputs.id }}
       nightly_version: ${{ needs.prepare.outputs.nightly_version }}
       ref: ${{ needs.prepare.outputs.ref }}
+      skip_windows: ${{ needs.prepare.outputs.skip_windows }}
     steps:
       - name: Delete existing nightly release and tag
         env:

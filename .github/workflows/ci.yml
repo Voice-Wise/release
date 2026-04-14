@@ -15,6 +15,11 @@ on:
         required: false
         default: "master"
         type: string
+      skip_windows:
+        description: "Skip Windows CI jobs"
+        required: false
+        default: true
+        type: boolean
 
 concurrency:
   group: ci-${{ github.event.client_payload.sha || github.event.inputs.sha }}
@@ -27,6 +32,7 @@ jobs:
     outputs:
       sha: ${{ steps.params.outputs.sha }}
       ref: ${{ steps.params.outputs.ref }}
+      skip_windows: ${{ steps.params.outputs.skip_windows }}
     steps:
       - name: Get parameters
         id: params
@@ -34,14 +40,27 @@ jobs:
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
             echo "sha=${{ github.event.client_payload.sha }}" >> $GITHUB_OUTPUT
             echo "ref=${{ github.event.client_payload.ref }}" >> $GITHUB_OUTPUT
+            skip_windows='${{ github.event.client_payload.skip_windows }}'
           else
             echo "sha=${{ github.event.inputs.sha }}" >> $GITHUB_OUTPUT
             echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
+            skip_windows='${{ inputs.skip_windows }}'
           fi
+
+          skip_windows="$(printf '%s' "${skip_windows:-true}" | tr '[:upper:]' '[:lower:]')"
+          case "${skip_windows}" in
+            true|1|yes)
+              echo "skip_windows=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "skip_windows=false" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
 
   ci:
     name: Run CI (${{ matrix.name }})
     needs: [prepare]
+    if: ${{ matrix.os != 'windows-latest' || needs.prepare.outputs.skip_windows != 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
