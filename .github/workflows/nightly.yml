@@ -643,8 +643,38 @@ jobs:
           security default-keychain -s "$KEYCHAIN_PATH"
           security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      - name: Build + upload assets (macOS)
+      - name: Validate Apple notarization credentials
         if: ${{ runner.os == 'macOS' }}
+        id: notarization
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${APPLE_ID:-}" || -z "${APPLE_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
+            echo "::warning::Apple 公证凭据缺失，nightly 将继续产出已签名但未公证的 macOS 包。"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LOG_PATH="$RUNNER_TEMP/notarytool-history.log"
+          if xcrun notarytool history \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            >"$LOG_PATH" 2>&1; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            cat "$LOG_PATH" >&2 || true
+            echo "::warning::Apple 公证凭据校验失败，nightly 将继续产出已签名但未公证的 macOS 包。"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build + upload assets (macOS, notarized)
+        if: ${{ runner.os == 'macOS' && steps.notarization.outputs.enabled == 'true' }}
         uses: tauri-apps/tauri-action@v0.6.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -656,6 +686,24 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tauriScript: "bun run tauri"
+          tagName: nightly
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          releaseBody: ""
+          args: ${{ matrix.tauri_args }}
+          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
+
+      - name: Build + upload assets (macOS, signed only)
+        if: ${{ runner.os == 'macOS' && steps.notarization.outputs.enabled != 'true' }}
+        uses: tauri-apps/tauri-action@v0.6.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         with:
           tauriScript: "bun run tauri"
           tagName: nightly
