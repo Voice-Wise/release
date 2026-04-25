@@ -139,7 +139,7 @@ jobs:
               -H "Authorization: Bearer $DASHSCOPE_API_KEY" \
               -H "Content-Type: application/json" \
               -d "$(jq -n --arg prompt "$PROMPT" '{
-                "model": "qwen-plus-latest",
+                "model": "qwen3.6-plus",
                 "messages": [{"role": "user", "content": $prompt}],
                 "max_tokens": 1024
               }')" 2>/dev/null || echo "{}")
