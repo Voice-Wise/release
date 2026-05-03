@@ -38,12 +38,12 @@ jobs:
         id: params
         run: |
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "sha=${{ github.event.client_payload.sha }}" >> $GITHUB_OUTPUT
-            echo "ref=${{ github.event.client_payload.ref }}" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.event.client_payload.sha }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.client_payload.ref }}" >> "$GITHUB_OUTPUT"
             skip_windows='${{ github.event.client_payload.skip_windows }}'
           else
-            echo "sha=${{ github.event.inputs.sha }}" >> $GITHUB_OUTPUT
-            echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.event.inputs.sha }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
             skip_windows='${{ inputs.skip_windows }}'
           fi
 

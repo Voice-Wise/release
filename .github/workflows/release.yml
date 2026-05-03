@@ -10,7 +10,7 @@ on:
         required: true
         type: string
       version:
-        description: "Version to release (e.g., 0.1.0)"
+        description: "Version to release (e.g. 0.1.0)"
         required: true
         type: string
       skip_windows:
@@ -24,145 +24,118 @@ jobs:
     name: Prepare Release
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     outputs:
       release_body: ${{ steps.changelog.outputs.notes }}
       version: ${{ steps.params.outputs.version }}
       ref: ${{ steps.params.outputs.ref }}
       skip_windows: ${{ steps.params.outputs.skip_windows }}
+      package_matrix: ${{ steps.package-matrix.outputs.matrix }}
     steps:
+      - name: Checkout release repo
+        uses: actions/checkout@v4
+
       - name: Get build parameters
         id: params
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "ref=${{ github.event.client_payload.ref }}" >> $GITHUB_OUTPUT
-            echo "version=${{ github.event.client_payload.version }}" >> $GITHUB_OUTPUT
+            echo "ref=${{ github.event.client_payload.ref }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ github.event.client_payload.version }}" >> "$GITHUB_OUTPUT"
             skip_windows='${{ github.event.client_payload.skip_windows }}'
           else
-            echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
             skip_windows='${{ inputs.skip_windows }}'
           fi
 
           skip_windows="$(printf '%s' "${skip_windows:-true}" | tr '[:upper:]' '[:lower:]')"
           case "${skip_windows}" in
-            true|1|yes)
-              echo "skip_windows=true" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "skip_windows=false" >> "$GITHUB_OUTPUT"
-              ;;
+            true|1|yes) echo "skip_windows=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "skip_windows=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
+      - name: Build package matrix
+        id: package-matrix
+        env:
+          SKIP_WINDOWS: ${{ steps.params.outputs.skip_windows }}
+        run: |
+          echo "matrix=$(node electron-release/package-matrix.mjs --skip-windows "$SKIP_WINDOWS")" >> "$GITHUB_OUTPUT"
+
       - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
-          repository: Voice-Wise/VoiceWise
+          repository: Voice-Wise/voicewise-electron
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ steps.params.outputs.ref }}
+          path: source
           fetch-depth: 0
           fetch-tags: true
 
       - name: Verify stable tag + version consistency
+        working-directory: source
+        env:
+          BUILD_REF: ${{ steps.params.outputs.ref }}
+          BUILD_VERSION: ${{ steps.params.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-
-          python - <<'PY'
-          import os
-          import json
-          import re
-          import tomllib
-          from pathlib import Path
-
-          tag = os.environ.get("BUILD_REF", "")
-          if not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
-              raise SystemExit(f"Expected stable tag vX.Y.Z, got: {tag}")
-
-          expected = tag.removeprefix("v")
-          pkg_version = json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]
-          tauri_version = json.loads(Path("src-tauri/tauri.conf.json").read_text(encoding="utf-8"))["version"]
-          cargo_version = tomllib.loads(Path("src-tauri/Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
-
-          versions = {
-              "package.json": pkg_version,
-              "src-tauri/tauri.conf.json": tauri_version,
-              "src-tauri/Cargo.toml": cargo_version,
-          }
-
-          mismatch = {k: v for k, v in versions.items() if v != expected}
-          if mismatch:
-              joined = ", ".join(f"{k}={v}" for k, v in mismatch.items())
-              raise SystemExit(f"Version mismatch: tag={expected}, {joined}")
-          print(f"Version OK: {expected}")
-          PY
-        env:
-          BUILD_REF: ${{ steps.params.outputs.ref }}
+          if [[ ! "${BUILD_REF}" =~ ^v[0-9]+[.][0-9]+[.][0-9]+$ ]]; then
+            echo "Expected stable tag vX.Y.Z, got: ${BUILD_REF}" >&2
+            exit 1
+          fi
+          EXPECTED="${BUILD_REF#v}"
+          if [[ "${BUILD_VERSION}" != "${EXPECTED}" ]]; then
+            echo "Version input mismatch: ref=${BUILD_REF}, version=${BUILD_VERSION}" >&2
+            exit 1
+          fi
+          PACKAGE_VERSION="$(node -e "process.stdout.write(require('./package.json').version)")"
+          if [[ "${PACKAGE_VERSION}" != "${EXPECTED}" ]]; then
+            echo "package.json version mismatch: tag=${EXPECTED}, package.json=${PACKAGE_VERSION}" >&2
+            exit 1
+          fi
 
       - name: Generate changelog from commits
         id: changelog
-        shell: bash
+        working-directory: source
         env:
           DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+          CURRENT_TAG: ${{ steps.params.outputs.ref }}
+        shell: bash
         run: |
           set -euo pipefail
-
-          CURRENT_TAG="${{ steps.params.outputs.ref }}"
           PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*' "${CURRENT_TAG}^" 2>/dev/null || true)"
 
           if [[ -n "${PREV_TAG}" ]]; then
             RANGE="${PREV_TAG}..HEAD"
-            COMPARE_URL="https://github.com/Voice-Wise/VoiceWise/compare/${PREV_TAG}...${CURRENT_TAG}"
+            COMPARE_URL="https://github.com/Voice-Wise/voicewise-electron/compare/${PREV_TAG}...${CURRENT_TAG}"
           else
             RANGE="HEAD"
             COMPARE_URL=""
           fi
 
-          # Get commit messages
-          COMMITS="$(git log --reverse --no-merges --format='%s' ${RANGE} | grep -v '^chore(release):' || true)"
-
+          COMMITS="$(git log --reverse --no-merges --format='%s' "${RANGE}" | grep -v '^chore(release):' || true)"
           if [[ -z "$COMMITS" ]]; then
-            NOTES="## Changelog
-
-          - No changes.
-          "
+            NOTES="## Changelog\n\n- No changes.\n"
           else
-            # Build the prompt
-            PROMPT="Based on the following git commit messages, generate a concise and user-friendly changelog in BOTH Chinese (Simplified) and English. First output the Chinese version, then add a horizontal rule (---), then output the English version. Group changes by category (e.g., 鉁?鏂板姛鑳?New Features, 馃悰 闂淇/Bug Fixes, 鈿?鎬ц兘浼樺寲/Performance, 馃敡 鍏朵粬鏀硅繘/Other Improvements). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.
-
-          Commit messages:
-          $COMMITS"
-
-            # Call DashScope API
+            PROMPT="Based on the following git commit messages, generate a concise and user-friendly changelog in BOTH Chinese (Simplified) and English. First output the Chinese version, then add a horizontal rule (---), then output the English version. Group changes by category. Only include meaningful changes, skip trivial commits. Output ONLY markdown changelog content.\n\nCompare: ${COMPARE_URL}\n\nCommit messages:\n$COMMITS"
             RESPONSE=$(curl -s --max-time 30 "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" \
               -H "Authorization: Bearer $DASHSCOPE_API_KEY" \
               -H "Content-Type: application/json" \
-              -d "$(jq -n --arg prompt "$PROMPT" '{
-                "model": "qwen3.6-plus",
-                "messages": [{"role": "user", "content": $prompt}],
-                "max_tokens": 1024
-              }')" 2>/dev/null || echo "{}")
-
+              -d "$(jq -n --arg prompt "$PROMPT" '{model:"qwen3.6-plus",messages:[{role:"user",content:$prompt}],max_tokens:1024}')" 2>/dev/null || echo "{}")
             CHANGELOG=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null || true)
-
             if [[ -z "$CHANGELOG" ]]; then
-              # Fallback to generic message (don't expose raw commit messages)
-              NOTES="## Changelog
-
-          See release for details. / 璇﹁鍙戝竷璇存槑銆?
-          "
+              NOTES="## Changelog\n\nSee source repository for details.\n"
             else
-              NOTES="## Changelog
-
-          $CHANGELOG
-          "
+              NOTES="## Changelog\n\n${CHANGELOG}\n"
             fi
           fi
 
-          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$NOTES" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "notes<<EOF"
+            echo -e "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
   test:
     name: Test (${{ matrix.name }})
@@ -172,292 +145,113 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: macOS (aarch64)
+          - name: macOS (arm64)
             os: macos-latest
-            target: aarch64-apple-darwin
-
-          - name: macOS (x86_64)
+          - name: macOS (x64)
             os: macos-latest
-            target: x86_64-apple-darwin
-
     steps:
       - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
-          repository: Voice-Wise/VoiceWise
+          repository: Voice-Wise/voicewise-electron
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.prepare.outputs.ref }}
 
-      - name: Enable git long paths (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        run: git config --system core.longpaths true
-
-      - name: "Optimize I/O for Windows (use D: drive)"
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
-
       - name: Setup Bun
-        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: ${{ runner.os }}-${{ matrix.target }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-bun-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run FE tests
-        run: bun run test:fe
-
-      - name: Setup Rust (stable)
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
+          workspaces: native/audio-capture -> target
 
-      - name: Run Rust tests
-        run: bun run test:rust
+      - name: Run typecheck
+        run: npm run typecheck
 
-      - name: Run functional tests
-        run: bun run test:functional
+      - name: Run unit tests
+        run: npm run test
+
+      - name: Run local functional tests
+        run: npm run test:functional:local
 
   test-windows:
-    name: Test (Windows (x86_64))
+    name: Test (Windows)
     needs: [prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
     runs-on: windows-latest
     continue-on-error: true
     steps:
       - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
-          repository: Voice-Wise/VoiceWise
+          repository: Voice-Wise/voicewise-electron
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.prepare.outputs.ref }}
 
-      - name: Enable git long paths (Windows)
+      - name: Enable git long paths
         run: git config --system core.longpaths true
 
-      - name: "Optimize I/O for Windows (use D: drive)"
-        shell: pwsh
-        run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
-
       - name: Setup Bun
-        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: ${{ runner.os }}-x86_64-pc-windows-msvc-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-x86_64-pc-windows-msvc-bun-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run FE tests
-        run: bun run test:fe
-
-      - name: Setup Rust (stable)
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
+      - name: Run typecheck
+        run: npm run typecheck
 
-      - name: Run Rust tests
-        run: bun run test:rust
+      - name: Run unit tests
+        run: npm run test
 
-      - name: Run functional tests
-        run: bun run test:functional
+      - name: Run local functional tests
+        run: npm run test:functional:local
 
   cloud-regression:
-    name: Cloud Regression (${{ matrix.name }})
+    name: Cloud Regression
     needs: [prepare]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS
-            os: macos-latest
-
-    env:
-      VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
-
-    steps:
-      - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/VoiceWise
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
-
-      - name: Enable git long paths (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        run: git config --system core.longpaths true
-
-      - name: "Optimize I/O for Windows (use D: drive)"
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
-        with:
-          bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: ${{ runner.os }}-cloud-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cloud-bun-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
-
-      - name: Run cloud functional tests
-        run: bun run test:functional:cloud
-
-  cloud-regression-windows:
-    name: Cloud Regression (Windows)
-    needs: [prepare]
-    if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: windows-latest
-    continue-on-error: true
+    runs-on: macos-latest
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
     steps:
       - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
-          repository: Voice-Wise/VoiceWise
+          repository: Voice-Wise/voicewise-electron
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.prepare.outputs.ref }}
 
-      - name: Enable git long paths (Windows)
-        run: git config --system core.longpaths true
-
-      - name: "Optimize I/O for Windows (use D: drive)"
-        shell: pwsh
-        run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
-
       - name: Setup Bun
-        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: ${{ runner.os }}-cloud-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cloud-bun-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
-
       - name: Run cloud functional tests
-        run: bun run test:functional:cloud
+        run: npm run test:functional:cloud
+
+      - name: Run Omni Plus cloud retry tests
+        run: npm run test:functional:cloud:omni-plus-retry
 
   create-release:
-    name: Create Release
+    name: Create Stable Release
     needs: [prepare, test, cloud-regression]
     runs-on: ubuntu-latest
     permissions:
@@ -470,10 +264,10 @@ jobs:
     steps:
       - name: Create GitHub release
         id: release
-        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.prepare.outputs.version }}
-          name: VoiceWise v${{ needs.prepare.outputs.version }}
+          name: LiveType v${{ needs.prepare.outputs.version }}
           body: ${{ needs.prepare.outputs.release_body }}
           generate_release_notes: false
           draft: false
@@ -481,366 +275,126 @@ jobs:
 
   package:
     name: Package (${{ matrix.name }})
-    needs: [create-release]
+    needs: [prepare, create-release]
     runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.platform == 'windows' }}
     permissions:
       contents: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.package_matrix) }}
     env:
       SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.version }}
       SENTRY_DIST: stable-${{ github.run_number }}-${{ github.run_attempt }}
       VITE_SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.version }}
       VITE_SENTRY_DIST: stable-${{ github.run_number }}-${{ github.run_attempt }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS (aarch64)
-            os: macos-latest
-            target: aarch64-apple-darwin
-            tauri_args: --target aarch64-apple-darwin
-            artifact_name: voicewise-macos-aarch64-apple-darwin
-            artifact_paths: |
-              src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-              src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz*
-
-          - name: macOS (x86_64)
-            os: macos-latest
-            target: x86_64-apple-darwin
-            tauri_args: --target x86_64-apple-darwin
-            artifact_name: voicewise-macos-x86_64-apple-darwin
-            artifact_paths: |
-              src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz*
-
+      CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY }}
     steps:
       - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
         with:
-          repository: Voice-Wise/VoiceWise
+          repository: Voice-Wise/voicewise-electron
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.create-release.outputs.ref }}
 
-      - name: Enable git long paths (Windows)
+      - name: Enable git long paths
         if: ${{ runner.os == 'Windows' }}
         run: git config --system core.longpaths true
 
-      - name: "Optimize I/O for Windows (use D: drive)"
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
-
       - name: Setup Bun
-        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: ${{ runner.os }}-${{ matrix.target }}-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-bun-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
-
-      - name: Install NSIS (Windows)
+      - name: Install NSIS
         if: ${{ runner.os == 'Windows' }}
-        run: |
-          choco install nsis -y --no-progress
-          if (Test-Path 'C:\Program Files (x86)\NSIS') {
-            'C:\Program Files (x86)\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          } elseif (Test-Path 'C:\Program Files\NSIS') {
-            'C:\Program Files\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          }
+        run: choco install nsis -y --no-progress
 
-      - name: Import Apple code signing cert (early)
+      - name: Import Apple code signing cert
         if: ${{ runner.os == 'macOS' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        shell: bash
         run: |
           set -euo pipefail
-
           KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-          KEYCHAIN_PATH="$RUNNER_TEMP/voicewise-build.keychain-db"
+          KEYCHAIN_PATH="$RUNNER_TEMP/livetype-build.keychain-db"
           CERT_PATH="$RUNNER_TEMP/apple_cert.p12"
-
-          export CERT_PATH
-          python3 - <<'PY'
-          import base64, os, pathlib
-
-          b64 = os.environ["APPLE_CERTIFICATE"]
-          b64 = "".join(b64.split())
-          data = base64.b64decode(b64)
-          pathlib.Path(os.environ["CERT_PATH"]).write_bytes(data)
-          PY
-
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
 
-      - name: Build + upload assets (macOS)
-        if: ${{ runner.os == 'macOS' }}
-        uses: tauri-apps/tauri-action@v0.6.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          tauriScript: "bun run tauri"
-          tagName: v${{ needs.create-release.outputs.version }}
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseBody: ""
-          args: ${{ matrix.tauri_args }}
-          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
+      - name: Build Electron package
+        run: npm run build && npx electron-builder ${{ matrix.builderArgs }}
 
-      - name: Build + upload assets (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        uses: tauri-apps/tauri-action@v0.6.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tauriScript: "bun run tauri"
-          tagName: v${{ needs.create-release.outputs.version }}
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseBody: ""
-          args: ${{ matrix.tauri_args }}
-          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
-
-      - name: Collect debug symbols (macOS)
-        if: ${{ runner.os == 'macOS' }}
+      - name: Collect release assets
         shell: bash
         run: |
           set -euo pipefail
-          OUTPUT_DIR="$RUNNER_TEMP/sentry-debug/${{ matrix.target }}"
-          SEARCH_ROOT="src-tauri/target/${{ matrix.target }}/release"
+          mkdir -p release-assets
+          echo '${{ toJson(matrix.artifactPaths) }}' | jq -r '.[]' | while read -r pattern; do
+            mapfile -t matches < <(compgen -G "$pattern")
+            if [[ ${#matches[@]} -eq 0 ]]; then
+              echo "Missing artifact pattern: $pattern" >&2
+              exit 1
+            fi
+            cp "${matches[@]}" release-assets/
+          done
+
+      - name: Upload release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload v${{ needs.create-release.outputs.version }} release-assets/* --clobber
+
+      - name: Collect Sentry debug symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT_DIR="$RUNNER_TEMP/sentry-debug/${{ matrix.platform }}-${{ matrix.arch }}"
           mkdir -p "$OUTPUT_DIR"
+          find dist \( -type d -name '*.dSYM' -o -type f -name '*.pdb' \) -exec cp -R {} "$OUTPUT_DIR/" \; || true
           touch "$OUTPUT_DIR/.keep"
 
-          if [[ -d "$SEARCH_ROOT" ]]; then
-            while IFS= read -r -d '' symbol_dir; do
-              cp -R "$symbol_dir" "$OUTPUT_DIR/"
-            done < <(find "$SEARCH_ROOT" -type d -name '*.dSYM' -print0)
-          fi
-
-      - name: Collect debug symbols (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          $outputDir = Join-Path $env:RUNNER_TEMP "sentry-debug/${{ matrix.target }}"
-          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
-          New-Item -ItemType File -Force -Path (Join-Path $outputDir ".keep") | Out-Null
-
-          $searchRoots = @(
-            "src-tauri/target/${{ matrix.target }}/release",
-            "D:/a/_cargo-target/${{ matrix.target }}/release"
-          )
-
-          foreach ($root in $searchRoots) {
-            if (Test-Path $root) {
-              Get-ChildItem -Path $root -Filter *.pdb -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
-                Copy-Item -Path $_.FullName -Destination $outputDir -Force
-              }
-            }
-          }
-
       - name: Upload Sentry debug symbols artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v4
         with:
-          name: sentry-debug-${{ matrix.target }}
-          path: ${{ runner.temp }}/sentry-debug/${{ matrix.target }}
+          name: sentry-debug-${{ matrix.platform }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/sentry-debug/${{ matrix.platform }}-${{ matrix.arch }}
           if-no-files-found: warn
 
       - name: Upload Sentry sourcemap artifact
-        if: ${{ matrix.target == 'aarch64-apple-darwin' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ matrix.platform == 'macos' && matrix.arch == 'arm64' }}
+        uses: actions/upload-artifact@v4
         with:
           name: sentry-dist
           path: dist
           if-no-files-found: error
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_paths }}
-          if-no-files-found: error
-
-  package-windows:
-    name: Package (Windows (x86_64))
-    needs: [create-release]
-    if: ${{ needs.create-release.outputs.skip_windows != 'true' }}
-    runs-on: windows-latest
-    continue-on-error: true
-    permissions:
-      contents: write
-    env:
-      SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.version }}
-      SENTRY_DIST: stable-${{ github.run_number }}-${{ github.run_attempt }}
-      VITE_SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.version }}
-      VITE_SENTRY_DIST: stable-${{ github.run_number }}-${{ github.run_attempt }}
-    steps:
-      - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/VoiceWise
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.create-release.outputs.ref }}
-
-      - name: Enable git long paths (Windows)
-        run: git config --system core.longpaths true
-
-      - name: "Optimize I/O for Windows (use D: drive)"
-        shell: pwsh
-        run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
-        with:
-          bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: windows-latest-x86_64-pc-windows-msvc-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            windows-latest-x86_64-pc-windows-msvc-bun-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
-
-      - name: Install NSIS (Windows)
-        run: |
-          choco install nsis -y --no-progress
-          if (Test-Path 'C:\Program Files (x86)\NSIS') {
-            'C:\Program Files (x86)\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          } elseif (Test-Path 'C:\Program Files\NSIS') {
-            'C:\Program Files\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          }
-
-      - name: Build + upload assets (Windows)
-        uses: tauri-apps/tauri-action@v0.6.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tauriScript: "bun run tauri"
-          tagName: v${{ needs.create-release.outputs.version }}
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseBody: ""
-          args: --target x86_64-pc-windows-msvc --bundles nsis
-          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
-
-      - name: Collect debug symbols (Windows)
-        shell: pwsh
-        run: |
-          $outputDir = Join-Path $env:RUNNER_TEMP "sentry-debug/x86_64-pc-windows-msvc"
-          New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
-          New-Item -ItemType File -Force -Path (Join-Path $outputDir ".keep") | Out-Null
-
-          $searchRoots = @(
-            "src-tauri/target/x86_64-pc-windows-msvc/release",
-            "D:/a/_cargo-target/x86_64-pc-windows-msvc/release"
-          )
-
-          foreach ($root in $searchRoots) {
-            if (Test-Path $root) {
-              Get-ChildItem -Path $root -Filter *.pdb -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
-                Copy-Item -Path $_.FullName -Destination $outputDir -Force
-              }
-            }
-          }
-
-      - name: Upload Sentry debug symbols artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: sentry-debug-x86_64-pc-windows-msvc
-          path: ${{ runner.temp }}/sentry-debug/x86_64-pc-windows-msvc
-          if-no-files-found: warn
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: voicewise-windows-x86_64-pc-windows-msvc
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe*
+          name: ${{ matrix.artifactName }}
+          path: release-assets
           if-no-files-found: error
 
   sentry-release:
     name: Upload Sentry Assets
-    needs: [create-release, package, package-windows]
-    if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.package-windows.result == 'success' || needs.package-windows.result == 'failure') }}
+    needs: [create-release, package]
+    if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout release repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4
 
       - name: Download Sentry sourcemap artifact
         uses: actions/download-artifact@v4
@@ -862,55 +416,35 @@ jobs:
           SENTRY_DIST: stable-${{ github.run_number }}-${{ github.run_attempt }}
           SENTRY_SOURCEMAP_DIR: ${{ runner.temp }}/sentry/dist
           SENTRY_DEBUG_ROOT: ${{ runner.temp }}/sentry/debug
-        run: |
-          bash scripts/upload-sentry-release-assets.sh
+        run: bash scripts/upload-sentry-release-assets.sh
 
   publish-manifest:
     name: Publish Stable Manifest
-    needs: [create-release, package, package-windows, sentry-release]
-    if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' && needs.sentry-release.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.package-windows.result == 'success' || needs.package-windows.result == 'failure') }}
+    needs: [create-release, package, sentry-release]
+    if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Checkout release repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: main
+        uses: actions/checkout@v4
 
-      - name: Generate combined manifest
+      - name: Generate Electron updater manifest
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          python scripts/generate-updater-manifests.py \
-            --owner "Voice-Wise" \
-            --repo "release" \
-            --tag "v${{ needs.create-release.outputs.version }}" \
-            --out-dir "." \
-            --channel stable \
-            --format combined
+          TAG="v${{ needs.create-release.outputs.version }}"
+          ASSETS_JSON="$(gh release view "$TAG" --json assets --jq '.assets')"
+          PUBLISHED_AT="$(gh release view "$TAG" --json publishedAt --jq '.publishedAt')"
+          node electron-release/generate-updater-manifest.mjs \
+            --assets-json "$ASSETS_JSON" \
+            --version "${{ needs.create-release.outputs.version }}" \
+            --published-at "$PUBLISHED_AT" \
+            --base-url "https://github.com/Voice-Wise/release/releases/download/${TAG}" \
+            --out-dir "."
 
-      - name: Upload manifest to versioned release
+      - name: Upload manifest to stable release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "v${{ needs.create-release.outputs.version }}" \
-            latest.json --clobber
-
-      - name: Update stable tag release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          VERSION="${{ needs.create-release.outputs.version }}"
-
-          # Delete existing stable release if exists
-          gh release delete stable --yes --cleanup-tag 2>/dev/null || true
-
-          # Create new stable release pointing to the same tag
-          gh release create stable \
-            --target "v${VERSION}" \
-            --title "VoiceWise Latest Stable (v${VERSION})" \
-            --notes "Latest stable release: v${VERSION}" \
-            latest.json
+        run: gh release upload v${{ needs.create-release.outputs.version }} latest.json --clobber

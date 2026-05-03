@@ -16,16 +16,19 @@
 - nightly manifest 发布到 `https://github.com/Voice-Wise/release/releases/download/nightly/latest.json`。
 - artifact 命名与 `electron-builder.yml` 保持一致：`LiveType-<version>-macos-<arch>.dmg`、`LiveType-<version>-windows-<arch>-setup.exe`。
 
-## Release 仓库迁移 TODO
+## Release 仓库迁移状态
 
-- 将 Tauri workflow 中的 `tauri-apps/tauri-action` 替换为 `npm run build` 加 `electron-builder --mac/--win --publish never`。
+- Release 仓 `ci.yml`、`nightly.yml`、`release.yml` 已切到 `Voice-Wise/voicewise-electron`，不再 checkout 旧 Tauri 仓。
+- CI 验证使用 `npm run typecheck`、`npm run test`、`npm run test:functional:local`、`npm run build`。
+- Nightly / stable 打包使用 `npm run build && npx electron-builder <platform args>`，并从 `dist/` 收集 Electron 产物。
+- Updater manifest 使用 `electron-release/generate-updater-manifest.mjs` 生成 `latest.json`。
 - macOS 签名与公证继续使用 Release 仓现有 `APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD`、`APPLE_SIGNING_IDENTITY`、`APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`。
 - Windows 签名所需证书当前 Release YAML 未提供；迁移 Windows 正式包前需要补充 Windows code signing secret，或在 workflow 中明确保留 unsigned 降级。
-- Sentry sourcemap/debug symbol 上传可继续沿用 Release 仓现有 `SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT`，但 Electron dSYM/PDB 搜索路径需改到 `dist/`。
+- Sentry sourcemap/debug symbol 上传继续沿用 Release 仓现有 `SENTRY_AUTH_TOKEN`、`SENTRY_ORG`、`SENTRY_PROJECT`，Electron dSYM/PDB 搜索路径已改到 `dist/`。
 
 ## 发布候选验证矩阵
 
 - 本地必过：`npm run typecheck && npm run test && npm run test:functional:local && npm run build`。
 - Release 合同必过：`npm run test -- electron-release`。
 - native smoke：`npm run test:native-smoke` 记录为 RC 风险项；需要在真实 macOS/Windows 机器上确认权限、热键、粘贴、前台应用和系统音频相关能力。
-- Windows 正式发布：默认沿用 `skip_windows=true`；如果开启 Windows 包，需要先处理 Windows 签名 secret 或明确 unsigned 降级。
+- Windows 正式发布：默认沿用 `skip_windows=true`；如果开启 Windows 包，需要先处理 Windows 签名 secret 或接受 unsigned 降级。
