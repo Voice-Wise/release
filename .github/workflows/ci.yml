@@ -132,6 +132,9 @@ jobs:
       - name: Smoke test packaged launch
         run: npm run test:packaged-launch
 
+      - name: Smoke test packaged updater manifest
+        run: npm run test:packaged-updater-manifest
+
   ci-windows:
     name: Run CI (Windows)
     needs: [prepare]
@@ -208,3 +211,6 @@ jobs:
 
       - name: Smoke test packaged launch
         run: npm run test:packaged-launch
+
+      - name: Smoke test packaged updater manifest
+        run: npm run test:packaged-updater-manifest
