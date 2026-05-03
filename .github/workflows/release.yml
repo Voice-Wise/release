@@ -484,7 +484,7 @@ jobs:
         run: |
           $downloadDir = Join-Path $env:RUNNER_TEMP "windows-installed-updater-smoke"
           New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
-          gh release download $env:RELEASE_TAG --pattern "LiveType-*-windows-x64-setup.exe" --dir $downloadDir --clobber
+          gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern "LiveType-*-windows-x64-setup.exe" --dir $downloadDir --clobber
           $installer = Get-ChildItem $downloadDir -Filter "LiveType-*-windows-x64-setup.exe" | Select-Object -First 1
           if (-not $installer) {
             throw "Windows installer not found in $downloadDir"
