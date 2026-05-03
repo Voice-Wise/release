@@ -65,7 +65,7 @@ jobs:
       - name: Checkout private source code
         uses: actions/checkout@v4
         with:
-          repository: Voice-Wise/VoiceWise
+          repository: Voice-Wise/voicewise-electron
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.prepare.outputs.sha }}
 
@@ -112,22 +112,22 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            src-tauri -> target
+            native/audio-capture -> target
           env-vars: |
             CARGO_HOME
             CARGO_TARGET_DIR
 
-      - name: Run Rust tests
-        run: bun run test:rust
+      - name: Run typecheck
+        run: npm run typecheck
 
-      - name: Run functional tests
-        run: bun run test:functional
+      - name: Run unit tests
+        run: npm run test
 
-      - name: Run frontend unit tests
-        run: bun run test:fe
+      - name: Run local functional tests
+        run: npm run test:functional:local
 
-      - name: Build frontend
-        run: bun run build
+      - name: Build Electron app
+        run: npm run build
 
   ci-windows:
     name: Run CI (Windows)
@@ -138,7 +138,7 @@ jobs:
       - name: Checkout private source code
         uses: actions/checkout@v4
         with:
-          repository: Voice-Wise/VoiceWise
+          repository: Voice-Wise/voicewise-electron
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.prepare.outputs.sha }}
 
@@ -183,13 +183,19 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            src-tauri -> target
+            native/audio-capture -> target
           env-vars: |
             CARGO_HOME
             CARGO_TARGET_DIR
 
-      - name: Run Rust tests
-        run: bun run test:rust
+      - name: Run typecheck
+        run: npm run typecheck
 
-      - name: Run functional tests
-        run: bun run test:functional
+      - name: Run unit tests
+        run: npm run test
+
+      - name: Run local functional tests
+        run: npm run test:functional:local
+
+      - name: Build Electron app
+        run: npm run build
