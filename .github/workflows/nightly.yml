@@ -489,3 +489,39 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload nightly latest.json --clobber
+
+  verify-windows-installed-updater:
+    name: Verify Windows Installed Updater
+    needs: [create-release, publish-manifest]
+    if: ${{ needs.create-release.outputs.skip_windows != 'true' && needs.publish-manifest.result == 'success' }}
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout private source code
+        uses: actions/checkout@v4
+        with:
+          repository: Voice-Wise/voicewise-electron
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.create-release.outputs.ref }}
+
+      - name: Download Windows installer
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $downloadDir = Join-Path $env:RUNNER_TEMP "windows-installed-updater-smoke"
+          New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
+          gh release download nightly --pattern "LiveType-*-windows-x64-setup.exe" --dir $downloadDir --clobber
+          $installer = Get-ChildItem $downloadDir -Filter "LiveType-*-windows-x64-setup.exe" | Select-Object -First 1
+          if (-not $installer) {
+            throw "Windows installer not found in $downloadDir"
+          }
+          "VOICEWISE_WINDOWS_INSTALLER=$($installer.FullName)" >> $env:GITHUB_ENV
+
+      - name: Smoke test installed updater manifest
+        shell: pwsh
+        env:
+          VOICEWISE_WINDOWS_INSTALLED_UPDATER_MANIFEST_SMOKE: "1"
+          VOICEWISE_UPDATER_MANIFEST_SMOKE_CHANNEL: nightly
+        run: npm run test:windows-installed-launch
