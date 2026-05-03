@@ -519,9 +519,12 @@ jobs:
           }
           "VOICEWISE_WINDOWS_INSTALLER=$($installer.FullName)" >> $env:GITHUB_ENV
 
-      - name: Smoke test installed updater manifest
+      - name: Smoke test installed updater manifest and download open
         shell: pwsh
         env:
           VOICEWISE_WINDOWS_INSTALLED_UPDATER_MANIFEST_SMOKE: "1"
+          VOICEWISE_WINDOWS_INSTALLED_UPDATER_DOWNLOAD_OPEN_SMOKE: "1"
           VOICEWISE_UPDATER_MANIFEST_SMOKE_CHANNEL: nightly
+          VOICEWISE_UPDATER_DOWNLOAD_OPEN_SMOKE_CHANNEL: nightly
+          VOICEWISE_UPDATER_DOWNLOAD_OPEN_SMOKE_OPEN_MODE: probe
         run: npm run test:windows-installed-launch
