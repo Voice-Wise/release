@@ -126,8 +126,8 @@ jobs:
       - name: Run local functional tests
         run: npm run test:functional:local
 
-      - name: Build Electron app
-        run: npm run build
+      - name: Build unpacked Electron app
+        run: npm run build:unpack
 
   ci-windows:
     name: Run CI (Windows)
@@ -197,5 +197,5 @@ jobs:
       - name: Run local functional tests
         run: npm run test:functional:local
 
-      - name: Build Electron app
-        run: npm run build
+      - name: Build unpacked Electron app
+        run: npm run build:unpack

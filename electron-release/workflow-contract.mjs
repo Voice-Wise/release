@@ -43,7 +43,8 @@ export const RELEASE_SECRET_CONTRACT = {
   missingTodo: [
     {
       key: 'WINDOWS_CODE_SIGNING_CERTIFICATE',
-      reason: 'Release 仓现有 YAML 未提供 Windows 签名证书；skip_windows=false 前必须补齐或显式 unsigned 降级。'
+      reason:
+        'Release 仓现有 YAML 未提供 Windows 签名证书；skip_windows=false 前必须补齐或显式 unsigned 降级。'
     }
   ]
 }
@@ -56,7 +57,11 @@ const FORBIDDEN_TAURI_COMMANDS = [
 ]
 
 export function normalizeSkipWindows(value) {
-  return ['true', '1', 'yes'].includes(String(value ?? 'true').trim().toLowerCase())
+  return ['true', '1', 'yes'].includes(
+    String(value ?? 'true')
+      .trim()
+      .toLowerCase()
+  )
 }
 
 export function validateDispatchPayload(eventType, payload) {
@@ -84,7 +89,7 @@ export function buildElectronWorkflowPlan({ skipWindows = true } = {}) {
   const packageMatrix = buildElectronPackageMatrix({ skipWindows })
   const install = 'bun install --frozen-lockfile'
   const validation = ['npm run typecheck', 'npm run test', 'npm run test:functional:local']
-  const build = 'npm run build'
+  const build = 'npm run build:unpack'
 
   return {
     repositories: {
