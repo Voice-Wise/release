@@ -351,9 +351,10 @@ jobs:
             --out-dir release-assets
 
       - name: Upload release assets
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload v${{ needs.create-release.outputs.version }} release-assets/* --clobber
+        run: gh release upload v${{ needs.create-release.outputs.version }} release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
 
       - name: Collect Sentry debug symbols
         shell: bash
