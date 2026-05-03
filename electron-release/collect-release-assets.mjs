@@ -1,6 +1,7 @@
 // Release asset 收集器。用 Node 跨平台匹配 Electron 打包产物并复制到上传目录。
 import { cp, mkdir, readdir } from 'node:fs/promises'
 import { basename, join, relative, sep } from 'node:path'
+import { isCliEntrypoint } from './cli-entrypoint.mjs'
 
 function normalizePath(path) {
   return path.split(sep).join('/')
@@ -58,7 +59,7 @@ function parseArgs(argv) {
   return args
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isCliEntrypoint(import.meta.url, process.argv[1])) {
   const args = parseArgs(process.argv.slice(2))
   const patternsJson = args.get('--patterns-json')
   const outDir = args.get('--out-dir')

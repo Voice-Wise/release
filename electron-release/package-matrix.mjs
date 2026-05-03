@@ -1,4 +1,6 @@
 // Electron 发布矩阵。供 Release 仓库根据 skip_windows 生成 macOS/Windows 打包任务。
+import { isCliEntrypoint } from './cli-entrypoint.mjs'
+
 export function buildElectronPackageMatrix({ skipWindows = true } = {}) {
   const include = [
     {
@@ -40,7 +42,7 @@ function parseSkipWindows(value) {
   return ['true', '1', 'yes'].includes(String(value ?? 'true').trim().toLowerCase())
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isCliEntrypoint(import.meta.url, process.argv[1])) {
   const skipWindowsIndex = process.argv.indexOf('--skip-windows')
   const skipWindows =
     skipWindowsIndex >= 0 ? parseSkipWindows(process.argv[skipWindowsIndex + 1]) : parseSkipWindows(process.env.SKIP_WINDOWS)

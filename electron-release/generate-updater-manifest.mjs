@@ -1,6 +1,7 @@
 // Electron updater manifest 生成器。把 Release assets 转换为现有客户端可读取的 latest.json。
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { isCliEntrypoint } from './cli-entrypoint.mjs'
 
 const TARGETS = [
   {
@@ -70,7 +71,7 @@ function parseArgs(argv) {
   return args
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isCliEntrypoint(import.meta.url, process.argv[1])) {
   const args = parseArgs(process.argv.slice(2))
   const assetsJson = args.get('--assets-json')
   const version = args.get('--version')
