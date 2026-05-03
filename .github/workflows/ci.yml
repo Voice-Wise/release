@@ -129,6 +129,9 @@ jobs:
       - name: Build unpacked Electron app
         run: npm run build:unpack
 
+      - name: Smoke test packaged launch
+        run: npm run test:packaged-launch
+
   ci-windows:
     name: Run CI (Windows)
     needs: [prepare]
@@ -199,3 +202,6 @@ jobs:
 
       - name: Build unpacked Electron app
         run: npm run build:unpack
+
+      - name: Smoke test packaged launch
+        run: npm run test:packaged-launch
