@@ -200,6 +200,9 @@ jobs:
       - name: Run local functional tests
         run: npm run test:functional:local
 
+      - name: Run native smoke tests
+        run: npm run test:native-smoke
+
       - name: Build unpacked Electron app
         run: npm run build:unpack
 

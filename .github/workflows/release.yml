@@ -219,6 +219,9 @@ jobs:
       - name: Run local functional tests
         run: npm run test:functional:local
 
+      - name: Run native smoke tests
+        run: npm run test:native-smoke
+
   cloud-regression:
     name: Cloud Regression
     needs: [prepare]
