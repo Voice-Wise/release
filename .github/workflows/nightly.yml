@@ -312,7 +312,6 @@ jobs:
       SENTRY_DIST: nightly-${{ github.run_number }}-${{ github.run_attempt }}
       VITE_SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.nightly_version }}
       VITE_SENTRY_DIST: nightly-${{ github.run_number }}-${{ github.run_attempt }}
-      CSC_NAME: ${{ secrets.APPLE_SIGNING_IDENTITY }}
     steps:
       - name: Checkout private source code
         uses: actions/checkout@v4
@@ -351,6 +350,7 @@ jobs:
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
           KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
@@ -363,23 +363,22 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH"
           security default-keychain -s "$KEYCHAIN_PATH"
+          CSC_NAME="${APPLE_SIGNING_IDENTITY#Developer ID Application: }"
+          echo "CSC_NAME=${CSC_NAME}" >> "$GITHUB_ENV"
 
       - name: Build Electron package
         run: npm run build && npx electron-builder ${{ matrix.builderArgs }}
 
       - name: Collect release assets
         shell: bash
+        env:
+          ARTIFACT_PATTERNS: ${{ toJson(matrix.artifactPaths) }}
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          echo '${{ toJson(matrix.artifactPaths) }}' | jq -r '.[]' | while read -r pattern; do
-            mapfile -t matches < <(compgen -G "$pattern")
-            if [[ ${#matches[@]} -eq 0 ]]; then
-              echo "Missing artifact pattern: $pattern" >&2
-              exit 1
-            fi
-            cp "${matches[@]}" release-assets/
-          done
+          node electron-release/collect-release-assets.mjs \
+            --patterns-json "$ARTIFACT_PATTERNS" \
+            --out-dir release-assets
 
       - name: Upload release assets
         env:
@@ -466,11 +465,16 @@ jobs:
           set -euo pipefail
           ASSETS_JSON="$(gh release view nightly --json assets --jq '.assets')"
           PUBLISHED_AT="$(gh release view nightly --json publishedAt --jq '.publishedAt')"
+          MANIFEST_PLATFORMS="darwin-aarch64,darwin-x86_64"
+          if [ "${{ needs.create-release.outputs.skip_windows }}" != "true" ]; then
+            MANIFEST_PLATFORMS="${MANIFEST_PLATFORMS},windows-x86_64"
+          fi
           node electron-release/generate-updater-manifest.mjs \
             --assets-json "$ASSETS_JSON" \
             --version "${{ needs.create-release.outputs.nightly_version }}" \
             --published-at "$PUBLISHED_AT" \
             --base-url "https://github.com/Voice-Wise/release/releases/download/nightly" \
+            --platforms "$MANIFEST_PLATFORMS" \
             --out-dir "."
 
       - name: Upload manifest to nightly release
