@@ -380,6 +380,10 @@ jobs:
             --patterns-json "$ARTIFACT_PATTERNS" \
             --out-dir release-assets
 
+      - name: Smoke test installed Windows package
+        if: ${{ runner.os == 'Windows' }}
+        run: npm run test:windows-installed-launch
+
       - name: Upload release assets
         shell: bash
         env:
