@@ -529,3 +529,46 @@ jobs:
           VOICEWISE_UPDATER_DOWNLOAD_OPEN_SMOKE_CHANNEL: nightly
           VOICEWISE_UPDATER_DOWNLOAD_OPEN_SMOKE_OPEN_MODE: probe
         run: npm run test:windows-installed-launch
+
+  verify-macos-installed-updater:
+    name: Verify macOS Installed Updater
+    needs: [create-release, publish-manifest]
+    if: ${{ needs.publish-manifest.result == 'success' }}
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout private source code
+        uses: actions/checkout@v4
+        with:
+          repository: Voice-Wise/voicewise-electron
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.create-release.outputs.ref }}
+
+      - name: Download macOS DMG
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          arch_suffix="$(node -p "process.arch === 'arm64' ? 'arm64' : 'x64'")"
+          download_dir="${RUNNER_TEMP}/macos-installed-updater-smoke"
+          mkdir -p "$download_dir"
+          gh release download nightly --repo "$GITHUB_REPOSITORY" --pattern "LiveType-*-macos-${arch_suffix}.dmg" --dir "$download_dir" --clobber
+          dmg="$(find "$download_dir" -name "LiveType-*-macos-${arch_suffix}.dmg" -print -quit)"
+          if [ -z "$dmg" ]; then
+            echo "macOS DMG not found in $download_dir" >&2
+            exit 1
+          fi
+          echo "VOICEWISE_MACOS_DMG=$dmg" >> "$GITHUB_ENV"
+
+      - name: Smoke test installed updater manifest and download open
+        shell: bash
+        env:
+          VOICEWISE_MACOS_INSTALLED_UPDATER_MANIFEST_SMOKE: "1"
+          VOICEWISE_MACOS_INSTALLED_UPDATER_DOWNLOAD_OPEN_SMOKE: "1"
+          VOICEWISE_UPDATER_MANIFEST_SMOKE_CHANNEL: nightly
+          VOICEWISE_UPDATER_MANIFEST_SMOKE_TIMEOUT_MS: "90000"
+          VOICEWISE_UPDATER_DOWNLOAD_OPEN_SMOKE_CHANNEL: nightly
+          VOICEWISE_UPDATER_DOWNLOAD_OPEN_SMOKE_OPEN_MODE: probe
+        run: npm run test:macos-installed-launch
