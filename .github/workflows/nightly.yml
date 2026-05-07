@@ -23,7 +23,7 @@ concurrency:
 jobs:
   prepare:
     name: Prepare Nightly Release
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
     outputs:
@@ -192,7 +192,7 @@ jobs:
     name: Test (Windows)
     needs: [prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: windows-latest
+    runs-on: blacksmith-4vcpu-windows-2025
     continue-on-error: true
     steps:
       - name: Checkout private source code
@@ -236,7 +236,7 @@ jobs:
   cloud-regression:
     name: Cloud Regression
     needs: [prepare]
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
     steps:
@@ -267,7 +267,7 @@ jobs:
   create-release:
     name: Create Nightly Release
     needs: [prepare, test, cloud-regression]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
     outputs:
@@ -428,7 +428,7 @@ jobs:
     name: Upload Sentry Assets
     needs: [create-release, package]
     if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     steps:
       - name: Checkout release repo
         uses: actions/checkout@v4
@@ -459,7 +459,7 @@ jobs:
     name: Publish Nightly Manifest
     needs: [create-release, package, sentry-release]
     if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
     steps:
@@ -494,7 +494,7 @@ jobs:
     name: Verify Windows Installed Updater
     needs: [create-release, publish-manifest]
     if: ${{ needs.create-release.outputs.skip_windows != 'true' && needs.publish-manifest.result == 'success' }}
-    runs-on: windows-latest
+    runs-on: blacksmith-4vcpu-windows-2025
     permissions:
       contents: read
     steps:
@@ -534,7 +534,7 @@ jobs:
     name: Verify macOS Installed Updater
     needs: [create-release, publish-manifest]
     if: ${{ needs.publish-manifest.result == 'success' }}
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-15
     permissions:
       contents: read
     steps:
