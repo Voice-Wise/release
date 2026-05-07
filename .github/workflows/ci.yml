@@ -26,9 +26,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  runners:
+    name: Load Runner Config
+    uses: ./.github/workflows/_runners.yml
+
   prepare:
     name: Prepare CI
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    needs: [runners]
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
     outputs:
       sha: ${{ steps.params.outputs.sha }}
       ref: ${{ steps.params.outputs.ref }}
@@ -59,8 +64,8 @@ jobs:
 
   ci:
     name: Run CI (macOS)
-    needs: [prepare]
-    runs-on: blacksmith-12vcpu-macos-15
+    needs: [runners, prepare]
+    runs-on: ${{ needs.runners.outputs.macos }}
     steps:
       - name: Checkout private source code
         uses: actions/checkout@v4
@@ -131,9 +136,9 @@ jobs:
 
   ci-windows:
     name: Run CI (Windows)
-    needs: [prepare]
+    needs: [runners, prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: blacksmith-8vcpu-windows-2025
+    runs-on: ${{ needs.runners.outputs.windows }}
     steps:
       - name: Checkout private source code
         uses: actions/checkout@v4

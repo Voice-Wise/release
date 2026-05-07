@@ -21,9 +21,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  runners:
+    name: Load Runner Config
+    uses: ./.github/workflows/_runners.yml
+
   prepare:
     name: Prepare Nightly Release
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    needs: [runners]
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
     outputs:
@@ -60,6 +65,8 @@ jobs:
         shell: bash
         env:
           SKIP_WINDOWS: ${{ steps.params.outputs.skip_windows }}
+          RUNNER_MACOS: ${{ needs.runners.outputs.macos }}
+          RUNNER_WINDOWS: ${{ needs.runners.outputs.windows }}
         run: |
           set -euo pipefail
 
@@ -70,7 +77,7 @@ jobs:
           include = [
               {
                   "name": "macOS (aarch64)",
-                  "os": "macos-latest",
+                  "os": os.environ["RUNNER_MACOS"],
                   "target": "aarch64-apple-darwin",
                   "os_target": "darwin",
                   "arch": "aarch64",
@@ -87,7 +94,7 @@ jobs:
               include.append(
                   {
                       "name": "Windows (x86_64)",
-                      "os": "windows-latest",
+                      "os": os.environ["RUNNER_WINDOWS"],
                       "target": "x86_64-pc-windows-msvc",
                       "os_target": "windows",
                       "arch": "x86_64",
@@ -196,18 +203,18 @@ jobs:
 
   test:
     name: Test (${{ matrix.name }})
-    needs: [prepare]
+    needs: [runners, prepare]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: macOS (aarch64)
-            os: macos-latest
+            os: ${{ needs.runners.outputs.macos }}
             target: aarch64-apple-darwin
 
           - name: macOS (x86_64)
-            os: macos-latest
+            os: ${{ needs.runners.outputs.macos }}
             target: x86_64-apple-darwin
 
     steps:
@@ -258,9 +265,9 @@ jobs:
 
   test-windows:
     name: Test (Windows (x86_64))
-    needs: [prepare]
+    needs: [runners, prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: blacksmith-8vcpu-windows-2025
+    runs-on: ${{ needs.runners.outputs.windows }}
     continue-on-error: true
     steps:
       - name: Checkout private source code
@@ -326,14 +333,14 @@ jobs:
 
   cloud-regression:
     name: Cloud Regression (${{ matrix.name }})
-    needs: [prepare]
+    needs: [runners, prepare]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: macOS
-            os: blacksmith-12vcpu-macos-15
+            os: ${{ needs.runners.outputs.macos }}
 
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
@@ -381,9 +388,9 @@ jobs:
 
   cloud-regression-windows:
     name: Cloud Regression (Windows)
-    needs: [prepare]
+    needs: [runners, prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: blacksmith-8vcpu-windows-2025
+    runs-on: ${{ needs.runners.outputs.windows }}
     continue-on-error: true
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
@@ -446,8 +453,8 @@ jobs:
 
   create-release:
     name: Create Nightly Release
-    needs: [prepare, test, cloud-regression]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    needs: [runners, prepare, test, cloud-regression]
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
     outputs:
@@ -801,8 +808,8 @@ jobs:
 
   sentry-release:
     name: Upload Sentry Assets
-    needs: [create-release, package]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    needs: [runners, create-release, package]
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
     steps:
       - name: Checkout release repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -832,8 +839,8 @@ jobs:
 
   publish-manifest:
     name: Publish Nightly Manifest
-    needs: [create-release, package, sentry-release]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    needs: [runners, create-release, package, sentry-release]
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
     steps:

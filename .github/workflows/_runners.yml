@@ -1,0 +1,36 @@
+name: Runner Config
+
+on:
+  workflow_call:
+    outputs:
+      ubuntu:
+        description: "Ubuntu runner label"
+        value: ${{ jobs.runners.outputs.ubuntu }}
+      macos:
+        description: "macOS runner label"
+        value: ${{ jobs.runners.outputs.macos }}
+      windows:
+        description: "Windows runner label"
+        value: ${{ jobs.runners.outputs.windows }}
+
+env:
+  RUNNER_UBUNTU: &runner_ubuntu blacksmith-8vcpu-ubuntu-2404
+  RUNNER_MACOS: blacksmith-12vcpu-macos-15
+  RUNNER_WINDOWS: blacksmith-8vcpu-windows-2025
+
+jobs:
+  runners:
+    name: Export Runner Labels
+    runs-on: *runner_ubuntu
+    outputs:
+      ubuntu: ${{ steps.runners.outputs.ubuntu }}
+      macos: ${{ steps.runners.outputs.macos }}
+      windows: ${{ steps.runners.outputs.windows }}
+    steps:
+      - name: Export runner labels
+        id: runners
+        shell: bash
+        run: |
+          echo "ubuntu=${RUNNER_UBUNTU}" >> "$GITHUB_OUTPUT"
+          echo "macos=${RUNNER_MACOS}" >> "$GITHUB_OUTPUT"
+          echo "windows=${RUNNER_WINDOWS}" >> "$GITHUB_OUTPUT"

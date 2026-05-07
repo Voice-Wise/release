@@ -20,9 +20,14 @@ on:
         type: boolean
 
 jobs:
+  runners:
+    name: Load Runner Config
+    uses: ./.github/workflows/_runners.yml
+
   prepare:
     name: Prepare Release
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    needs: [runners]
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
     outputs:
@@ -166,18 +171,18 @@ jobs:
 
   test:
     name: Test (${{ matrix.name }})
-    needs: [prepare]
+    needs: [runners, prepare]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: macOS (aarch64)
-            os: macos-latest
+            os: ${{ needs.runners.outputs.macos }}
             target: aarch64-apple-darwin
 
           - name: macOS (x86_64)
-            os: macos-latest
+            os: ${{ needs.runners.outputs.macos }}
             target: x86_64-apple-darwin
 
     steps:
@@ -249,9 +254,9 @@ jobs:
 
   test-windows:
     name: Test (Windows (x86_64))
-    needs: [prepare]
+    needs: [runners, prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: blacksmith-8vcpu-windows-2025
+    runs-on: ${{ needs.runners.outputs.windows }}
     continue-on-error: true
     steps:
       - name: Checkout private source code
@@ -320,14 +325,14 @@ jobs:
 
   cloud-regression:
     name: Cloud Regression (${{ matrix.name }})
-    needs: [prepare]
+    needs: [runners, prepare]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: macOS
-            os: blacksmith-12vcpu-macos-15
+            os: ${{ needs.runners.outputs.macos }}
 
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
@@ -393,9 +398,9 @@ jobs:
 
   cloud-regression-windows:
     name: Cloud Regression (Windows)
-    needs: [prepare]
+    needs: [runners, prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: blacksmith-8vcpu-windows-2025
+    runs-on: ${{ needs.runners.outputs.windows }}
     continue-on-error: true
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
@@ -458,8 +463,8 @@ jobs:
 
   create-release:
     name: Create Release
-    needs: [prepare, test, cloud-regression]
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    needs: [runners, prepare, test, cloud-regression]
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
     outputs:
@@ -481,7 +486,7 @@ jobs:
 
   package:
     name: Package (${{ matrix.name }})
-    needs: [create-release]
+    needs: [runners, create-release]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -495,7 +500,7 @@ jobs:
       matrix:
         include:
           - name: macOS (aarch64)
-            os: macos-latest
+            os: ${{ needs.runners.outputs.macos }}
             target: aarch64-apple-darwin
             tauri_args: --target aarch64-apple-darwin
             artifact_name: voicewise-macos-aarch64-apple-darwin
@@ -504,7 +509,7 @@ jobs:
               src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz*
 
           - name: macOS (x86_64)
-            os: macos-latest
+            os: ${{ needs.runners.outputs.macos }}
             target: x86_64-apple-darwin
             tauri_args: --target x86_64-apple-darwin
             artifact_name: voicewise-macos-x86_64-apple-darwin
@@ -709,9 +714,9 @@ jobs:
 
   package-windows:
     name: Package (Windows (x86_64))
-    needs: [create-release]
+    needs: [runners, create-release]
     if: ${{ needs.create-release.outputs.skip_windows != 'true' }}
-    runs-on: blacksmith-8vcpu-windows-2025
+    runs-on: ${{ needs.runners.outputs.windows }}
     continue-on-error: true
     permissions:
       contents: write
@@ -755,9 +760,9 @@ jobs:
           path: |
             ~/.bun/install/cache
             D:/a/_bun-cache
-          key: windows-latest-x86_64-pc-windows-msvc-bun-${{ hashFiles('bun.lock') }}
+          key: ${{ runner.os }}-x86_64-pc-windows-msvc-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
-            windows-latest-x86_64-pc-windows-msvc-bun-
+            ${{ runner.os }}-x86_64-pc-windows-msvc-bun-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -835,9 +840,9 @@ jobs:
 
   sentry-release:
     name: Upload Sentry Assets
-    needs: [create-release, package, package-windows]
+    needs: [runners, create-release, package, package-windows]
     if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.package-windows.result == 'success' || needs.package-windows.result == 'failure') }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
     steps:
       - name: Checkout release repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -867,9 +872,9 @@ jobs:
 
   publish-manifest:
     name: Publish Stable Manifest
-    needs: [create-release, package, package-windows, sentry-release]
+    needs: [runners, create-release, package, package-windows, sentry-release]
     if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' && needs.sentry-release.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.package-windows.result == 'success' || needs.package-windows.result == 'failure') }}
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
     steps:
