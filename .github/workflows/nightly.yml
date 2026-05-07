@@ -148,11 +148,9 @@ jobs:
           echo "nightly_version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Nightly version: ${NIGHTLY_VERSION}"
 
-      - name: Generate nightly changelog from commits
+      - name: Build nightly release body
         id: changelog
         shell: bash
-        env:
-          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
         run: |
           set -euo pipefail
 
@@ -160,42 +158,17 @@ jobs:
           LAST_STABLE_TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
 
           if [[ -n "${LAST_STABLE_TAG}" ]]; then
-            RANGE="${LAST_STABLE_TAG}..HEAD"
             COMPARE_URL="https://github.com/Voice-Wise/VoiceWise/compare/${LAST_STABLE_TAG}...${CURRENT_REF}"
           else
-            RANGE="HEAD"
             COMPARE_URL=""
           fi
-
-          COMMITS="$(git log --reverse --no-merges --format='%s' ${RANGE} | grep -v '^chore(release):' || true)"
 
           HEADER="## Nightly Build\n\n- Version: v${{ steps.version.outputs.nightly_version }}\n- Ref: ${CURRENT_REF}\n"
           if [[ -n "${COMPARE_URL}" ]]; then
             HEADER="${HEADER}- Compare: ${COMPARE_URL}\n"
           fi
 
-          if [[ -z "$COMMITS" ]]; then
-            NOTES="${HEADER}\n\n## Changelog\n\n- No changes.\n"
-          else
-            PROMPT="You are generating release notes for a NIGHTLY build. Based on the following git commit messages, generate a concise and user-friendly changelog in BOTH Chinese (Simplified) and English. First output the Chinese version, then add a horizontal rule (---), then output the English version. Group changes by category (e.g., ✨ 新功能/New Features, 🐛 问题修复/Bug Fixes, ⚡ 性能优化/Performance, 🔧 其他改进/Other Improvements). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.\n\nCommit messages:\n$COMMITS"
-
-            RESPONSE=$(curl -s --max-time 30 "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" \
-              -H "Authorization: Bearer $DASHSCOPE_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -n --arg prompt "$PROMPT" '{
-                "model": "qwen3.6-plus",
-                "messages": [{"role": "user", "content": $prompt}],
-                "max_tokens": 1024
-              }')" 2>/dev/null || echo "{}")
-
-            CHANGELOG=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null || true)
-
-            if [[ -z "$CHANGELOG" ]]; then
-              NOTES="${HEADER}\n\n## Changelog\n\nSee source repository for details.\n"
-            else
-              NOTES="${HEADER}\n\n## Changelog\n\n${CHANGELOG}\n"
-            fi
-          fi
+          NOTES="${HEADER}\n\n## Changelog\n\nNightly changelog generation is skipped for this build.\n"
 
           echo "notes<<EOF" >> "$GITHUB_OUTPUT"
           echo -e "$NOTES" >> "$GITHUB_OUTPUT"
