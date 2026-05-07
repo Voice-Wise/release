@@ -23,7 +23,7 @@ concurrency:
 jobs:
   prepare:
     name: Prepare Nightly Release
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     permissions:
       contents: write
     outputs:
@@ -260,7 +260,7 @@ jobs:
     name: Test (Windows (x86_64))
     needs: [prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: windows-latest
+    runs-on: blacksmith-8vcpu-windows-2025
     continue-on-error: true
     steps:
       - name: Checkout private source code
@@ -333,7 +333,7 @@ jobs:
       matrix:
         include:
           - name: macOS
-            os: macos-latest
+            os: blacksmith-12vcpu-macos-15
 
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
@@ -383,7 +383,7 @@ jobs:
     name: Cloud Regression (Windows)
     needs: [prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: windows-latest
+    runs-on: blacksmith-8vcpu-windows-2025
     continue-on-error: true
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
@@ -447,7 +447,7 @@ jobs:
   create-release:
     name: Create Nightly Release
     needs: [prepare, test, cloud-regression]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     permissions:
       contents: write
     outputs:
@@ -802,7 +802,7 @@ jobs:
   sentry-release:
     name: Upload Sentry Assets
     needs: [create-release, package]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     steps:
       - name: Checkout release repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -833,7 +833,7 @@ jobs:
   publish-manifest:
     name: Publish Nightly Manifest
     needs: [create-release, package, sentry-release]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     permissions:
       contents: write
     steps:
