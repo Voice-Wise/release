@@ -16,7 +16,7 @@ on:
       skip_windows:
         description: "Skip Windows jobs and packaging"
         required: false
-        default: true
+        default: false
         type: boolean
 
 jobs:
@@ -50,7 +50,7 @@ jobs:
             skip_windows='${{ inputs.skip_windows }}'
           fi
 
-          skip_windows="$(printf '%s' "${skip_windows:-true}" | tr '[:upper:]' '[:lower:]')"
+          skip_windows="$(printf '%s' "${skip_windows:-false}" | tr '[:upper:]' '[:lower:]')"
           case "${skip_windows}" in
             true|1|yes)
               echo "skip_windows=true" >> "$GITHUB_OUTPUT"
