@@ -208,7 +208,7 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            D:/a/_bun-cache
+            ${{ runner.temp }}/_bun-cache
           key: ${{ runner.os }}-${{ matrix.target }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-bun-
@@ -253,12 +253,13 @@ jobs:
       - name: Enable git long paths (Windows)
         run: git config --system core.longpaths true
 
-      - name: "Optimize I/O for Windows (use D: drive)"
+      - name: "Optimize I/O for Windows"
         shell: pwsh
         run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
+          $ioRoot = $env:RUNNER_TEMP
+          $cargoHome = Join-Path $ioRoot "_cargo"
+          $cargoTargetDir = Join-Path $ioRoot "_cargo-target"
+          $bunCache = Join-Path $ioRoot "_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
           New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
@@ -276,7 +277,7 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            D:/a/_bun-cache
+            ${{ runner.temp }}/_bun-cache
           key: ${{ runner.os }}-x86_64-pc-windows-msvc-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-x86_64-pc-windows-msvc-bun-
@@ -336,7 +337,7 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            D:/a/_bun-cache
+            ${{ runner.temp }}/_bun-cache
           key: ${{ runner.os }}-cloud-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-cloud-bun-
@@ -378,12 +379,13 @@ jobs:
       - name: Enable git long paths (Windows)
         run: git config --system core.longpaths true
 
-      - name: "Optimize I/O for Windows (use D: drive)"
+      - name: "Optimize I/O for Windows"
         shell: pwsh
         run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
+          $ioRoot = $env:RUNNER_TEMP
+          $cargoHome = Join-Path $ioRoot "_cargo"
+          $cargoTargetDir = Join-Path $ioRoot "_cargo-target"
+          $bunCache = Join-Path $ioRoot "_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
           New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
@@ -401,7 +403,7 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            D:/a/_bun-cache
+            ${{ runner.temp }}/_bun-cache
           key: ${{ runner.os }}-cloud-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-cloud-bun-
@@ -499,13 +501,14 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         run: git config --system core.longpaths true
 
-      - name: "Optimize I/O for Windows (use D: drive)"
+      - name: "Optimize I/O for Windows"
         if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
-          $bunCache = "D:/a/_bun-cache"
+          $ioRoot = $env:RUNNER_TEMP
+          $cargoHome = Join-Path $ioRoot "_cargo"
+          $cargoTargetDir = Join-Path $ioRoot "_cargo-target"
+          $bunCache = Join-Path $ioRoot "_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
           New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
@@ -523,7 +526,7 @@ jobs:
         with:
           path: |
             ~/.bun/install/cache
-            D:/a/_bun-cache
+            ${{ runner.temp }}/_bun-cache
           key: ${{ runner.os }}-${{ matrix.target }}-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.target }}-bun-
@@ -553,7 +556,7 @@ jobs:
           set -euo pipefail
 
           # Patch package.json, tauri.conf.json, and Cargo.toml
-          python - <<'PY'
+          python3 - <<'PY'
           import json, os, re
           from pathlib import Path
 
@@ -711,7 +714,7 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         run: |
-          $source = "D:/a/_cargo-target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          $source = Join-Path $env:CARGO_TARGET_DIR "x86_64-pc-windows-msvc/release/bundle/nsis"
           $dest = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
           New-Item -ItemType Directory -Force -Path $dest | Out-Null
           if (Test-Path $source) {
@@ -746,7 +749,7 @@ jobs:
 
           $searchRoots = @(
             "src-tauri/target/${{ matrix.target }}/release",
-            "D:/a/_cargo-target/${{ matrix.target }}/release"
+            (Join-Path $env:CARGO_TARGET_DIR "${{ matrix.target }}/release")
           )
 
           foreach ($root in $searchRoots) {
