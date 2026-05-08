@@ -233,7 +233,7 @@ jobs:
       - name: Run Rust tests
         run: bun run test:rust
 
-      - name: Run functional tests
+      - name: Run functional tests (no API key)
         run: bun run test:functional
 
   test-windows:
@@ -302,133 +302,12 @@ jobs:
       - name: Run Rust tests
         run: bun run test:rust
 
-      - name: Run functional tests
+      - name: Run functional tests (no API key)
         run: bun run test:functional
-
-  cloud-regression:
-    name: Cloud Regression (${{ matrix.name }})
-    needs: [runners, prepare]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS
-            os: ${{ needs.runners.outputs.macos }}
-
-    env:
-      VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
-
-    steps:
-      - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/VoiceWise
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
-        with:
-          bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            ${{ runner.temp }}/_bun-cache
-          key: ${{ runner.os }}-cloud-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cloud-bun-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
-
-      - name: Run cloud functional tests
-        run: bun run test:functional:cloud
-
-  cloud-regression-windows:
-    name: Cloud Regression (Windows)
-    needs: [runners, prepare]
-    if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: ${{ needs.runners.outputs.windows }}
-    continue-on-error: true
-    env:
-      VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
-    steps:
-      - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/VoiceWise
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
-
-      - name: Enable git long paths (Windows)
-        run: git config --system core.longpaths true
-
-      - name: "Optimize I/O for Windows"
-        shell: pwsh
-        run: |
-          $ioRoot = $env:RUNNER_TEMP
-          $cargoHome = Join-Path $ioRoot "_cargo"
-          $cargoTargetDir = Join-Path $ioRoot "_cargo-target"
-          $bunCache = Join-Path $ioRoot "_bun-cache"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-          echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
-        with:
-          bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            ${{ runner.temp }}/_bun-cache
-          key: ${{ runner.os }}-cloud-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cloud-bun-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
-
-      - name: Run cloud functional tests
-        run: bun run test:functional:cloud
 
   create-release:
     name: Create Nightly Release
-    needs: [runners, prepare, test, cloud-regression]
+    needs: [runners, prepare, test]
     runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write

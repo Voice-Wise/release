@@ -249,7 +249,7 @@ jobs:
       - name: Run Rust tests
         run: bun run test:rust
 
-      - name: Run functional tests
+      - name: Run functional tests (no API key)
         run: bun run test:functional
 
   test-windows:
@@ -320,7 +320,7 @@ jobs:
       - name: Run Rust tests
         run: bun run test:rust
 
-      - name: Run functional tests
+      - name: Run functional tests (no API key)
         run: bun run test:functional
 
   cloud-regression:
@@ -393,7 +393,7 @@ jobs:
             CARGO_HOME
             CARGO_TARGET_DIR
 
-      - name: Run cloud functional tests
+      - name: Run cloud functional tests (API key)
         run: bun run test:functional:cloud
 
   cloud-regression-windows:
@@ -458,7 +458,7 @@ jobs:
             CARGO_HOME
             CARGO_TARGET_DIR
 
-      - name: Run cloud functional tests
+      - name: Run cloud functional tests (API key)
         run: bun run test:functional:cloud
 
   create-release:
