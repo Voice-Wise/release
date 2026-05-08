@@ -202,7 +202,7 @@ jobs:
         shell: pwsh
         run: |
           $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
           $bunCache = "D:/a/_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
@@ -240,6 +240,9 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
+          shared-key: release-test-${{ runner.os }}-${{ matrix.target }}
+          cache-on-failure: true
+          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -273,7 +276,7 @@ jobs:
         shell: pwsh
         run: |
           $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
           $bunCache = "D:/a/_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
@@ -311,6 +314,9 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
+          shared-key: release-test-${{ runner.os }}-x86_64-pc-windows-msvc
+          cache-on-failure: true
+          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -354,7 +360,7 @@ jobs:
         shell: pwsh
         run: |
           $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
           $bunCache = "D:/a/_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
@@ -387,6 +393,9 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
+          shared-key: release-cloud-${{ runner.os }}
+          cache-on-failure: true
+          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -419,7 +428,7 @@ jobs:
         shell: pwsh
         run: |
           $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
           $bunCache = "D:/a/_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
@@ -452,6 +461,9 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
+          shared-key: release-cloud-${{ runner.os }}
+          cache-on-failure: true
+          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -484,9 +496,99 @@ jobs:
           draft: false
           prerelease: false
 
+  rust-deps:
+    name: Build Rust Dependencies (${{ matrix.name }})
+    needs: [runners, prepare]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (aarch64)
+            os: ${{ needs.runners.outputs.macos }}
+            target: aarch64-apple-darwin
+
+          - name: macOS (x86_64)
+            os: ${{ needs.runners.outputs.macos }}
+            target: x86_64-apple-darwin
+    steps:
+      - name: Checkout private source code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        with:
+          shared-key: release-package-${{ runner.os }}-${{ matrix.target }}
+          cache-on-failure: true
+          cache-workspace-crates: false
+          workspaces: |
+            src-tauri -> target
+          env-vars: |
+            CARGO_HOME
+            CARGO_TARGET_DIR
+
+      - name: Build Rust dependencies
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path src-tauri/Cargo.toml --locked
+
+  rust-deps-windows:
+    name: Build Rust Dependencies (Windows (x86_64))
+    needs: [runners, prepare]
+    if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
+    runs-on: ${{ needs.runners.outputs.windows }}
+    continue-on-error: true
+    steps:
+      - name: Checkout private source code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+
+      - name: Enable git long paths (Windows)
+        run: git config --system core.longpaths true
+
+      - name: "Optimize I/O for Windows (use D: drive)"
+        shell: pwsh
+        run: |
+          $cargoHome = "D:/a/_cargo"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
+          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
+          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
+          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        with:
+          shared-key: release-package-${{ runner.os }}-x86_64-pc-windows-msvc
+          cache-on-failure: true
+          cache-workspace-crates: false
+          workspaces: |
+            src-tauri -> target
+          env-vars: |
+            CARGO_HOME
+            CARGO_TARGET_DIR
+
+      - name: Build Rust dependencies
+        run: cargo build --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml --locked
+
   package:
     name: Package (${{ matrix.name }})
-    needs: [runners, create-release]
+    needs: [runners, create-release, rust-deps]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -534,7 +636,7 @@ jobs:
         shell: pwsh
         run: |
           $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
           $bunCache = "D:/a/_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
@@ -569,6 +671,9 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
+          shared-key: release-package-${{ runner.os }}-${{ matrix.target }}
+          cache-on-failure: true
+          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -679,7 +784,7 @@ jobs:
 
           $searchRoots = @(
             "src-tauri/target/${{ matrix.target }}/release",
-            "D:/a/_cargo-target/${{ matrix.target }}/release"
+            (Join-Path $env:CARGO_TARGET_DIR "${{ matrix.target }}/release")
           )
 
           foreach ($root in $searchRoots) {
@@ -714,7 +819,7 @@ jobs:
 
   package-windows:
     name: Package (Windows (x86_64))
-    needs: [runners, create-release]
+    needs: [runners, create-release, rust-deps-windows]
     if: ${{ needs.create-release.outputs.skip_windows != 'true' }}
     runs-on: ${{ needs.runners.outputs.windows }}
     continue-on-error: true
@@ -740,7 +845,7 @@ jobs:
         shell: pwsh
         run: |
           $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = "D:/a/_cargo-target"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
           $bunCache = "D:/a/_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
@@ -775,6 +880,9 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
+          shared-key: release-package-${{ runner.os }}-x86_64-pc-windows-msvc
+          cache-on-failure: true
+          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -813,7 +921,7 @@ jobs:
 
           $searchRoots = @(
             "src-tauri/target/x86_64-pc-windows-msvc/release",
-            "D:/a/_cargo-target/x86_64-pc-windows-msvc/release"
+            (Join-Path $env:CARGO_TARGET_DIR "x86_64-pc-windows-msvc/release")
           )
 
           foreach ($root in $searchRoots) {

@@ -224,6 +224,9 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
+          shared-key: nightly-test-${{ runner.os }}-${{ matrix.target }}
+          cache-on-failure: true
+          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -258,7 +261,7 @@ jobs:
         run: |
           $ioRoot = $env:RUNNER_TEMP
           $cargoHome = Join-Path $ioRoot "_cargo"
-          $cargoTargetDir = Join-Path $ioRoot "_cargo-target"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
           $bunCache = Join-Path $ioRoot "_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
@@ -293,6 +296,9 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
+          shared-key: nightly-test-${{ runner.os }}-x86_64-pc-windows-msvc
+          cache-on-failure: true
+          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -352,9 +358,61 @@ jobs:
           draft: false
           prerelease: true
 
+  rust-deps:
+    name: Build Rust Dependencies (${{ matrix.name }})
+    needs: [prepare]
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.allow_failure == true }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.package_matrix) }}
+    steps:
+      - name: Checkout private source code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+
+      - name: Enable git long paths (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: git config --system core.longpaths true
+
+      - name: "Optimize I/O for Windows"
+        if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          $ioRoot = $env:RUNNER_TEMP
+          $cargoHome = Join-Path $ioRoot "_cargo"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
+          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
+          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
+          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
+          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        with:
+          shared-key: nightly-package-${{ runner.os }}-${{ matrix.target }}
+          cache-on-failure: true
+          cache-workspace-crates: false
+          workspaces: |
+            src-tauri -> target
+          env-vars: |
+            CARGO_HOME
+            CARGO_TARGET_DIR
+
+      - name: Build Rust dependencies
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path src-tauri/Cargo.toml --locked
+
   package:
     name: Package (${{ matrix.name }})
-    needs: [prepare, create-release]
+    needs: [prepare, create-release, rust-deps]
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.allow_failure == true }}
     permissions:
@@ -386,7 +444,7 @@ jobs:
         run: |
           $ioRoot = $env:RUNNER_TEMP
           $cargoHome = Join-Path $ioRoot "_cargo"
-          $cargoTargetDir = Join-Path $ioRoot "_cargo-target"
+          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
           $bunCache = Join-Path $ioRoot "_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
@@ -421,6 +479,9 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
+          shared-key: nightly-package-${{ runner.os }}-${{ matrix.target }}
+          cache-on-failure: true
+          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
