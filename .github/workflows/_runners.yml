@@ -14,9 +14,9 @@ on:
         value: ${{ jobs.runners.outputs.windows }}
 
 env:
-  RUNNER_UBUNTU: &runner_ubuntu blacksmith-8vcpu-ubuntu-2404
-  RUNNER_MACOS: blacksmith-12vcpu-macos-15
-  RUNNER_WINDOWS: blacksmith-8vcpu-windows-2025
+  RUNNER_UBUNTU: &runner_ubuntu ubuntu-latest
+  RUNNER_MACOS: macos-latest
+  RUNNER_WINDOWS: windows-latest
 
 jobs:
   runners:
@@ -31,6 +31,8 @@ jobs:
         id: runners
         shell: bash
         run: |
-          echo "ubuntu=${RUNNER_UBUNTU}" >> "$GITHUB_OUTPUT"
-          echo "macos=${RUNNER_MACOS}" >> "$GITHUB_OUTPUT"
-          echo "windows=${RUNNER_WINDOWS}" >> "$GITHUB_OUTPUT"
+          {
+            echo "ubuntu=${RUNNER_UBUNTU}"
+            echo "macos=${RUNNER_MACOS}"
+            echo "windows=${RUNNER_WINDOWS}"
+          } >> "$GITHUB_OUTPUT"
