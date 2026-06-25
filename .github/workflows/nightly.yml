@@ -344,7 +344,7 @@ jobs:
           fi
 
           if gh api "repos/${REPO}/git/ref/tags/nightly" >/dev/null 2>&1; then
-            gh api -X DELETE "repos/${REPO}/git/refs/tags/nightly"
+            gh api -X DELETE "repos/${REPO}/git/refs/tags/nightly" || true
           fi
 
       - name: Create GitHub prerelease (nightly)
