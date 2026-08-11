@@ -7,6 +7,16 @@ import urllib.request
 from pathlib import Path
 
 
+SOURCE_COMMIT_SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
+
+
+def _normalize_source_commit_sha(value: str) -> str:
+    normalized = value.strip().lower()
+    if not SOURCE_COMMIT_SHA_PATTERN.fullmatch(normalized):
+        raise RuntimeError("Expected full 40-character source commit SHA")
+    return normalized
+
+
 def _http_get_json(url: str, token: str) -> dict:
     req = urllib.request.Request(url)
     req.add_header("Accept", "application/vnd.github+json")
@@ -160,11 +170,22 @@ def main() -> int:
         help="Explicit version string (without 'v' prefix). If not provided, derived from --tag.",
     )
     parser.add_argument(
+        "--source-commit-sha",
+        default="",
+        help="Full commit SHA of the VoiceWise source checkout used to build this release.",
+    )
+    parser.add_argument(
         "--token-env",
         default="GITHUB_TOKEN",
         help="Name of env var containing a GitHub token for API + asset downloads",
     )
     args = parser.parse_args()
+
+    source_commit_sha = ""
+    if args.source_commit_sha:
+        source_commit_sha = _normalize_source_commit_sha(args.source_commit_sha)
+    elif args.channel == "nightly":
+        raise RuntimeError("Nightly manifest requires --source-commit-sha")
 
     if args.channel == "stable":
         if not re.fullmatch(r"v\d+\.\d+\.\d+", args.tag):
@@ -337,6 +358,8 @@ def main() -> int:
         },
         "notes": notes,
     }
+    if source_commit_sha:
+        manifest["source_commit_sha"] = source_commit_sha
 
     out_path = out_dir / "latest.json"
     out_path.write_text(
