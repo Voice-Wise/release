@@ -169,6 +169,15 @@ jobs:
           echo "$NOTES" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
 
+  test-frontend:
+    name: Frontend Checks
+    needs: [prepare]
+    uses: ./.github/workflows/_frontend-tests.yml
+    with:
+      ref: ${{ needs.prepare.outputs.ref }}
+    secrets:
+      PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+
   test:
     name: Test (macOS ARM64)
     needs: [runners, prepare]
@@ -203,22 +212,6 @@ jobs:
         uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
         with:
           bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: ${{ runner.os }}-aarch64-apple-darwin-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-aarch64-apple-darwin-bun-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run FE tests
-        run: bun run test:fe
 
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
@@ -276,22 +269,6 @@ jobs:
         uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
         with:
           bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: ${{ runner.os }}-x86_64-pc-windows-msvc-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-x86_64-pc-windows-msvc-bun-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run FE tests
-        run: bun run test:fe
 
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
@@ -361,19 +338,6 @@ jobs:
         with:
           bun-version: "1.3.2"
 
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: ${{ runner.os }}-cloud-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cloud-bun-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
@@ -427,19 +391,6 @@ jobs:
         uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
         with:
           bun-version: "1.3.2"
-
-      - name: Cache Bun
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        with:
-          path: |
-            ~/.bun/install/cache
-            D:/a/_bun-cache
-          key: ${{ runner.os }}-cloud-bun-${{ hashFiles('bun.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cloud-bun-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
 
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
@@ -820,8 +771,8 @@ jobs:
 
   publish-manifest:
     name: Publish Validated Release
-    needs: [runners, create-release, test, test-windows, package, cloud-regression, cloud-regression-windows, package-windows]
-    if: ${{ always() && needs.create-release.result == 'success' && needs.test.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.test-windows.result == 'success') && needs.cloud-regression.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || (needs.cloud-regression-windows.result == 'success' && needs.package-windows.result == 'success')) }}
+    needs: [runners, create-release, test-frontend, test, test-windows, package, cloud-regression, cloud-regression-windows, package-windows]
+    if: ${{ always() && needs.create-release.result == 'success' && needs.test.result == 'success' && needs.test-frontend.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.test-windows.result == 'success') && needs.cloud-regression.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || (needs.cloud-regression-windows.result == 'success' && needs.package-windows.result == 'success')) }}
     runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
