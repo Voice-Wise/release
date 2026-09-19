@@ -20,4 +20,6 @@ python3 scripts/runner/configure-local-runner.py ~/.local/share/github-actions/v
 
 macOS 服务随用户登录启动，机器需联网且保持唤醒。runner 离线时已经指定它的任务会排队，不会自动转移到云端；要恢复云端构建，删除 `MACOS_BUILD_RUNNER` 后重新运行工作流。
 
+本机后台服务设置 `TAURI_BUNDLER_DMG_IGNORE_CI=false`，让 DMG 制作跳过需要 Finder 自动化权限的排版步骤，避免后台 AppleScript 超时。此降级仅影响本机产出的 macOS DMG 安装窗口布局，不改变应用内容、签名或公证；云端构建保持原行为。
+
 此 runner 只用于受信任的 Release 构建，不应给公开仓库的外部 PR 添加使用它的工作流。

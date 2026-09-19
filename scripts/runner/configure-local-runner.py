@@ -41,6 +41,7 @@ def configure(root):
         "RUSTUP_HOME": str(root / "tools/rustup"),
         "CARGO_BUILD_JOBS": "4",
         "BUN_INSTALL_CACHE_DIR": str(root / "cache/bun"),
+        "TAURI_BUNDLER_DMG_IGNORE_CI": "false",
     }
     for name in ["CARGO_HOME", "RUSTUP_HOME", "BUN_INSTALL_CACHE_DIR", "VOICEWISE_SIGNING_STATE_DIR"]:
         Path(variables[name]).mkdir(parents=True, exist_ok=True, mode=0o700)
