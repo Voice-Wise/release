@@ -83,11 +83,6 @@ jobs:
                   "os_target": "darwin",
                   "arch": "aarch64",
                   "tauri_args": "--target aarch64-apple-darwin",
-                  "artifact_name": "voicewise-nightly-macos-aarch64-apple-darwin",
-                  "artifact_paths": (
-                      "src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg\n"
-                      "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz*"
-                  ),
               }
           ]
 
@@ -99,10 +94,7 @@ jobs:
                       "target": "x86_64-pc-windows-msvc",
                       "os_target": "windows",
                       "arch": "x86_64",
-                      "allow_failure": True,
                       "tauri_args": "--target x86_64-pc-windows-msvc --bundles nsis",
-                      "artifact_name": "voicewise-nightly-windows-x86_64-pc-windows-msvc",
-                      "artifact_paths": "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe*",
                   }
               )
 
@@ -191,21 +183,9 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
   test:
-    name: Test (${{ matrix.name }})
+    name: Test (macOS ARM64)
     needs: [runners, prepare]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS (aarch64)
-            os: ${{ needs.runners.outputs.macos }}
-            target: aarch64-apple-darwin
-
-          - name: macOS (x86_64)
-            os: ${{ needs.runners.outputs.macos }}
-            target: x86_64-apple-darwin
-
+    runs-on: ${{ needs.runners.outputs.macos }}
     steps:
       - name: Checkout private source code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -225,9 +205,9 @@ jobs:
           path: |
             ~/.bun/install/cache
             ${{ runner.temp }}/_bun-cache
-          key: ${{ runner.os }}-${{ matrix.target }}-bun-${{ hashFiles('bun.lock') }}
+          key: ${{ runner.os }}-aarch64-apple-darwin-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-bun-
+            ${{ runner.os }}-aarch64-apple-darwin-bun-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -235,12 +215,12 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
-          shared-key: nightly-test-${{ runner.os }}-${{ matrix.target }}
+          shared-key: nightly-test-${{ runner.os }}-aarch64-apple-darwin
           cache-on-failure: true
           cache-workspace-crates: false
           workspaces: |
@@ -255,12 +235,14 @@ jobs:
       - name: Run functional tests (no API key)
         run: bun run test:functional
 
+      - name: Run frontend unit tests
+        run: bun run test:fe
+
   test-windows:
     name: Test (Windows (x86_64))
     needs: [runners, prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
     runs-on: ${{ needs.runners.outputs.windows }}
-    continue-on-error: true
     steps:
       - name: Checkout private source code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -328,8 +310,8 @@ jobs:
         run: bun run test:functional
 
   create-release:
-    name: Create Nightly Release
-    needs: [runners, prepare, test]
+    name: Create Build Draft
+    needs: [runners, prepare]
     runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
@@ -340,118 +322,22 @@ jobs:
       source_commit_sha: ${{ needs.prepare.outputs.source_commit_sha }}
       skip_windows: ${{ needs.prepare.outputs.skip_windows }}
     steps:
-      - name: Delete existing nightly release and tag
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          REPO="${GITHUB_REPOSITORY}"
+      - name: Checkout release repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-          if gh release view nightly --repo "${REPO}" >/dev/null 2>&1; then
-            gh release delete nightly --repo "${REPO}" --yes --cleanup-tag
-          fi
-
-          LEGACY_NIGHTLY_TAGS="$(gh release list --repo "${REPO}" --limit 200 --json tagName --jq '.[] | .tagName | select(. != "nightly" and test("^v[0-9]+\\.[0-9]+\\.[0-9]+-nightly([.-].*)?$"))')"
-          if [[ -n "${LEGACY_NIGHTLY_TAGS}" ]]; then
-            while IFS= read -r tag; do
-              [[ -z "${tag}" ]] && continue
-              echo "Delete legacy nightly release/tag: ${tag}"
-              gh release delete "${tag}" --repo "${REPO}" --yes --cleanup-tag
-            done <<< "${LEGACY_NIGHTLY_TAGS}"
-          fi
-
-          if gh api "repos/${REPO}/git/ref/tags/nightly" >/dev/null 2>&1; then
-            gh api -X DELETE "repos/${REPO}/git/refs/tags/nightly" || true
-          fi
-
-      - name: Create GitHub prerelease (nightly)
+      - name: Create private build draft
         id: release
-        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
-        with:
-          tag_name: nightly
-          name: VoiceWise Nightly (${{ needs.prepare.outputs.nightly_version }})
-          body: ${{ needs.prepare.outputs.release_body }}
-          generate_release_notes: false
-          draft: false
-          prerelease: true
-
-  rust-deps:
-    name: Build Rust Dependencies (${{ matrix.name }})
-    needs: [prepare]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    continue-on-error: ${{ matrix.allow_failure == true }}
-    env:
-      LIVETYPE_BUILD_COMMIT_SHA: ${{ needs.prepare.outputs.source_commit_sha }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.prepare.outputs.package_matrix) }}
-    steps:
-      - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/VoiceWise
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
-
-      - name: Checkout runner support scripts
-        if: ${{ runner.os == 'macOS' }}
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/release
-          ref: ${{ github.sha }}
-          path: .release-tools
-          sparse-checkout: scripts/runner
-          persist-credentials: false
-
-      - name: Prepare persistent local build cache
-        if: ${{ runner.environment == 'self-hosted' }}
-        shell: bash
-        run: bash .release-tools/scripts/runner/prepare-build-cache.sh
-
-      - name: Enable git long paths (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        run: git config --system core.longpaths true
-
-      - name: "Optimize I/O for Windows"
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          $ioRoot = $env:RUNNER_TEMP
-          $cargoHome = Join-Path $ioRoot "_cargo"
-          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Cache Cargo
-        if: ${{ runner.environment != 'self-hosted' }}
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          shared-key: nightly-package-${{ runner.os }}-${{ matrix.target }}
-          cache-on-failure: true
-          cache-workspace-crates: false
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
-
-      - name: Build Rust dependencies
-        run: cargo build --release --target ${{ matrix.target }} --manifest-path src-tauri/Cargo.toml --locked
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ needs.prepare.outputs.release_body }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.nightly_version }}
+        run: python3 scripts/release-publication.py create --channel nightly
 
   package:
     name: Package (${{ matrix.name }})
-    needs: [prepare, create-release, rust-deps]
+    needs: [prepare, create-release]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    continue-on-error: ${{ matrix.allow_failure == true }}
     permissions:
       contents: write
     env:
@@ -472,14 +358,13 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.create-release.outputs.ref }}
 
-      - name: Checkout runner support scripts
-        if: ${{ runner.os == 'macOS' }}
+      - name: Checkout release support scripts
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Voice-Wise/release
           ref: ${{ github.sha }}
           path: .release-tools
-          sparse-checkout: scripts/runner
+          sparse-checkout: scripts
           persist-credentials: false
 
       - name: Prepare persistent local build cache
@@ -642,9 +527,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tauriScript: "bun run tauri"
-          tagName: nightly
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseBody: ""
+          includeUpdaterJson: false
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
@@ -658,9 +542,8 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         with:
           tauriScript: "bun run tauri"
-          tagName: nightly
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseBody: ""
+          includeUpdaterJson: false
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
@@ -673,24 +556,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: "bun run tauri"
-          tagName: nightly
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseBody: ""
+          includeUpdaterJson: false
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
-
-      - name: Copy artifacts to workspace (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        shell: pwsh
-        run: |
-          $source = Join-Path $env:CARGO_TARGET_DIR "x86_64-pc-windows-msvc/release/bundle/nsis"
-          $dest = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          if (Test-Path $source) {
-            Copy-Item -Path "$source/*" -Destination $dest -Recurse -Force
-          } else {
-             Write-Warning "Source directory $source does not exist."
-          }
 
       - name: Collect debug symbols (macOS)
         if: ${{ runner.os == 'macOS' }}
@@ -729,27 +598,14 @@ jobs:
             }
           }
 
-      - name: Upload Sentry debug symbols artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: sentry-debug-${{ matrix.target }}
-          path: ${{ runner.temp }}/sentry-debug/${{ matrix.target }}
-          if-no-files-found: warn
-
-      - name: Upload Sentry sourcemap artifact
-        if: ${{ matrix.target == 'aarch64-apple-darwin' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: sentry-dist
-          path: dist
-          if-no-files-found: error
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_paths }}
-          if-no-files-found: error
+      - name: Upload source maps and debug symbols to Sentry
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_SOURCEMAP_DIR: ${{ runner.os == 'macOS' && 'dist' || 'sentry-no-sourcemaps' }}
+          SENTRY_REQUIRE_SOURCEMAPS: ${{ runner.os == 'macOS' }}
+          SENTRY_DEBUG_ROOT: ${{ runner.temp }}/sentry-debug
+        run: bash .release-tools/scripts/upload-sentry-release-assets.sh
 
       - name: Clean up Apple signing materials
         if: ${{ always() && runner.os == 'macOS' }}
@@ -759,73 +615,40 @@ jobs:
             python3 .release-tools/scripts/runner/apple-signing.py cleanup
           fi
 
-  sentry-release:
-    name: Upload Sentry Assets
-    needs: [runners, create-release, package]
-    runs-on: ${{ needs.runners.outputs.ubuntu }}
-    steps:
-      - name: Checkout release repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Download Sentry sourcemap artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: sentry-dist
-          path: ${{ runner.temp }}/sentry/dist
-
-      - name: Download Sentry debug artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: sentry-debug-*
-          path: ${{ runner.temp }}/sentry/debug
-          merge-multiple: true
-
-      - name: Upload source map and debug symbols to Sentry
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.nightly_version }}
-          SENTRY_DIST: nightly-${{ github.run_number }}-${{ github.run_attempt }}
-          SENTRY_SOURCEMAP_DIR: ${{ runner.temp }}/sentry/dist
-          SENTRY_DEBUG_ROOT: ${{ runner.temp }}/sentry/debug
-        run: |
-          bash scripts/upload-sentry-release-assets.sh
-
   publish-manifest:
-    name: Publish Nightly Manifest
-    needs: [runners, create-release, package, sentry-release]
+    name: Publish Validated Release
+    needs: [runners, create-release, test, test-windows, package]
+    if: ${{ always() && needs.create-release.result == 'success' && needs.test.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.test-windows.result == 'success') }}
     runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
     steps:
       - name: Checkout release repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: main
 
-      - name: Generate combined manifest
+      - name: Validate manifest and publish draft
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+          RELEASE_VERSION: ${{ needs.create-release.outputs.nightly_version }}
+          SKIP_WINDOWS: ${{ needs.create-release.outputs.skip_windows }}
           SOURCE_COMMIT_SHA: ${{ needs.create-release.outputs.source_commit_sha }}
-        run: |
-          set -euo pipefail
-          python scripts/generate-updater-manifests.py \
-            --owner "Voice-Wise" \
-            --repo "release" \
-            --tag "nightly" \
-            --version "${{ needs.create-release.outputs.nightly_version }}" \
-            --source-commit-sha "${SOURCE_COMMIT_SHA}" \
-            --out-dir "." \
-            --channel nightly \
-            --format combined
+        run: python3 scripts/release-publication.py publish --channel nightly
 
-          jq -e --arg sha "${SOURCE_COMMIT_SHA}" \
-            '.source_commit_sha == $sha' latest.json >/dev/null
+  cleanup-draft:
+    name: Clean Unpublished Draft
+    needs: [runners, create-release, package, publish-manifest]
+    if: ${{ always() && needs.create-release.outputs.release_id != '' }}
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Upload manifest to nightly release
+      - name: Delete only this run's unpublished draft
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if ! gh release upload nightly latest.json --clobber; then
-            echo "上传 nightly/latest.json 失败，请检查 nightly release/tag 是否创建成功" >&2
-            exit 1
-          fi
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        run: python3 scripts/release-publication.py cleanup --channel nightly

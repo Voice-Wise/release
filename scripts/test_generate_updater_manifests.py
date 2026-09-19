@@ -1,3 +1,5 @@
+"""验证源码 SHA、草稿下载链接及受支持平台的更新清单。"""
+
 import importlib.util
 import json
 import sys
@@ -29,6 +31,12 @@ class SourceCommitShaTests(unittest.TestCase):
             MODULE._normalize_source_commit_sha("z" * 40)
 
     def test_nightly_manifest_contains_source_commit_sha(self) -> None:
+        self.check_manifest(draft=False)
+
+    def test_draft_manifest_uses_final_public_urls(self) -> None:
+        self.check_manifest(draft=True)
+
+    def check_manifest(self, draft):
         version = "0.1.29-nightly.1"
         updater_name = f"LiveType_{version}_darwin_aarch64.app.tar.gz"
         installer_name = f"LiveType_{version}_darwin_aarch64.dmg"
@@ -50,6 +58,13 @@ class SourceCommitShaTests(unittest.TestCase):
                 },
             ],
         }
+        # 旧 Intel 资产即使存在也不能进入新清单；Windows x64 仍保留。
+        for platform, arch, extension in [("darwin", "x86_64", ".app.tar.gz"), ("windows", "x64", ".exe")]:
+            name = f"LiveType_{version}_{platform}_{arch}{extension}"
+            release["assets"] += [
+                {"name": name, "browser_download_url": f"https://example.com/{name}"},
+                {"name": name + ".sig", "url": "https://api.example.com/signature"},
+            ]
         source_commit_sha = "a" * 40
 
         with tempfile.TemporaryDirectory() as output_dir:
@@ -70,9 +85,11 @@ class SourceCommitShaTests(unittest.TestCase):
                 "--channel",
                 "nightly",
             ]
+            if draft:
+                argv += ["--release-id", "42"]
             with (
                 patch.object(sys, "argv", argv),
-                patch.object(MODULE, "_http_get_json", return_value=release),
+                patch.object(MODULE, "_http_get_json", return_value=release) as get_release,
                 patch.object(
                     MODULE,
                     "_download_github_release_asset",
@@ -87,6 +104,14 @@ class SourceCommitShaTests(unittest.TestCase):
 
         self.assertEqual(manifest["source_commit_sha"], source_commit_sha)
         self.assertEqual(manifest["version"], version)
+        self.assertEqual(set(manifest["platforms"]), {"darwin-aarch64", "windows-x86_64"})
+        self.assertEqual(set(manifest["installers"]["platform_installers"]), {"darwin-aarch64", "windows-x86_64"})
+        if draft:
+            self.assertEqual(get_release.call_args.args[0], "https://api.github.com/repos/Voice-Wise/release/releases/42")
+            self.assertEqual(manifest["platforms"]["darwin-aarch64"]["url"],
+                             f"https://github.com/Voice-Wise/release/releases/download/nightly/{updater_name}")
+            self.assertEqual(manifest["installers"]["platform_installers"]["darwin-aarch64"]["url"],
+                             f"https://github.com/Voice-Wise/release/releases/download/nightly/{installer_name}")
 
 
 if __name__ == "__main__":

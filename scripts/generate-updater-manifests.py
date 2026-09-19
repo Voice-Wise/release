@@ -1,9 +1,12 @@
+"""从构建草稿或公开 Release 生成 Apple Silicon / Windows 更新清单。"""
+
 import argparse
 import json
 import os
 import re
 import sys
 import urllib.request
+from urllib.parse import quote
 from pathlib import Path
 
 
@@ -138,6 +141,7 @@ def main() -> int:
     parser.add_argument("--owner", required=True)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--tag", required=True)
+    parser.add_argument("--release-id", type=int, help="从指定构建草稿读取资产，链接仍使用最终 tag")
     parser.add_argument("--out-dir", required=True)
     parser.add_argument(
         "--channel",
@@ -196,8 +200,9 @@ def main() -> int:
 
     token = os.environ.get(args.token_env, "")
 
+    release_path = str(args.release_id) if args.release_id else f"tags/{args.tag}"
     release = _http_get_json(
-        f"https://api.github.com/repos/{args.owner}/{args.repo}/releases/tags/{args.tag}",
+        f"https://api.github.com/repos/{args.owner}/{args.repo}/releases/{release_path}",
         token=token,
     )
 
@@ -208,6 +213,13 @@ def main() -> int:
     assets = release.get("assets") or []
     if not isinstance(assets, list):
         raise RuntimeError("Release assets payload invalid")
+    if args.release_id:
+        release["html_url"] = f"https://github.com/{args.owner}/{args.repo}/releases/tag/{quote(args.tag, safe='')}"
+        for asset in assets:
+            asset["browser_download_url"] = (
+                f"https://github.com/{args.owner}/{args.repo}/releases/download/"
+                f"{quote(args.tag, safe='')}/{quote(asset['name'], safe='')}"
+            )
 
     if args.version:
         version = args.version.removeprefix("v")
@@ -228,14 +240,6 @@ def main() -> int:
             "arch_canonical": "aarch64",
             "platform_aliases": ["macos", "darwin"],
             "arch_aliases": ["aarch64", "arm64"],
-            "extensions": [".app.tar.gz", ".tar.gz"],
-            "installer_extensions": [".dmg"],
-        },
-        {
-            "os_target": "darwin",
-            "arch_canonical": "x86_64",
-            "platform_aliases": ["macos", "darwin"],
-            "arch_aliases": ["x86_64", "x64"],
             "extensions": [".app.tar.gz", ".tar.gz"],
             "installer_extensions": [".dmg"],
         },
@@ -306,6 +310,8 @@ def main() -> int:
 
         sig_bytes = _download_github_release_asset(sig_asset["url"], token=token)
         sig_content = sig_bytes.decode("utf-8").strip()
+        if not sig_content:
+            raise RuntimeError("更新包签名为空")
 
         # Standard Tauri platform key: {os_target}-{arch}
         platform_key = f"{os_target}-{arch_canonical}"

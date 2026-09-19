@@ -10,3 +10,5 @@ Functional test policy:
 - Release builds run the full gate: local functional tests plus cloud regression tests that require provider credentials.
 
 本机 macOS ARM 构建、GitHub Secrets 使用及云端切换方式见 [本机 runner 说明](docs/local-runner.md)。
+
+macOS 仅支持 Apple Silicon。测试和打包并行，全部门禁通过后发布草稿；安装包不再重复上传 Actions Artifact。启用 Windows 时仍构建 x86_64 并要求测试通过。

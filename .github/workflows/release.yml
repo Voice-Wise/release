@@ -170,21 +170,9 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
   test:
-    name: Test (${{ matrix.name }})
+    name: Test (macOS ARM64)
     needs: [runners, prepare]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS (aarch64)
-            os: ${{ needs.runners.outputs.macos }}
-            target: aarch64-apple-darwin
-
-          - name: macOS (x86_64)
-            os: ${{ needs.runners.outputs.macos }}
-            target: x86_64-apple-darwin
-
+    runs-on: ${{ needs.runners.outputs.macos }}
     steps:
       - name: Checkout private source code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -222,9 +210,9 @@ jobs:
           path: |
             ~/.bun/install/cache
             D:/a/_bun-cache
-          key: ${{ runner.os }}-${{ matrix.target }}-bun-${{ hashFiles('bun.lock') }}
+          key: ${{ runner.os }}-aarch64-apple-darwin-bun-${{ hashFiles('bun.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-bun-
+            ${{ runner.os }}-aarch64-apple-darwin-bun-
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -235,12 +223,12 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: aarch64-apple-darwin
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
-          shared-key: release-test-${{ runner.os }}-${{ matrix.target }}
+          shared-key: release-test-${{ runner.os }}-aarch64-apple-darwin
           cache-on-failure: true
           cache-workspace-crates: false
           workspaces: |
@@ -260,7 +248,6 @@ jobs:
     needs: [runners, prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
     runs-on: ${{ needs.runners.outputs.windows }}
-    continue-on-error: true
     steps:
       - name: Checkout private source code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -410,7 +397,6 @@ jobs:
     needs: [runners, prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
     runs-on: ${{ needs.runners.outputs.windows }}
-    continue-on-error: true
     env:
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
     steps:
@@ -474,8 +460,8 @@ jobs:
         run: bun run test:functional:cloud
 
   create-release:
-    name: Create Release
-    needs: [runners, prepare, test, cloud-regression]
+    name: Create Build Draft
+    needs: [runners, prepare]
     runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
@@ -485,127 +471,20 @@ jobs:
       ref: ${{ needs.prepare.outputs.ref }}
       skip_windows: ${{ needs.prepare.outputs.skip_windows }}
     steps:
-      - name: Create GitHub release
+      - name: Checkout release repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Create private build draft
         id: release
-        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
-        with:
-          tag_name: v${{ needs.prepare.outputs.version }}
-          name: VoiceWise v${{ needs.prepare.outputs.version }}
-          body: ${{ needs.prepare.outputs.release_body }}
-          generate_release_notes: false
-          draft: false
-          prerelease: false
-
-  rust-deps:
-    name: Build Rust Dependencies (${{ matrix.name }})
-    needs: [runners, prepare]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS (aarch64)
-            os: ${{ needs.runners.outputs.macos_build }}
-            target: aarch64-apple-darwin
-
-          - name: macOS (x86_64)
-            os: ${{ needs.runners.outputs.macos }}
-            target: x86_64-apple-darwin
-    steps:
-      - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/VoiceWise
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
-
-      - name: Checkout runner support scripts
-        if: ${{ runner.os == 'macOS' }}
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/release
-          ref: ${{ github.sha }}
-          path: .release-tools
-          sparse-checkout: scripts/runner
-          persist-credentials: false
-
-      - name: Prepare persistent local build cache
-        if: ${{ runner.environment == 'self-hosted' }}
-        shell: bash
-        run: bash .release-tools/scripts/runner/prepare-build-cache.sh
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Cache Cargo
-        if: ${{ runner.environment != 'self-hosted' }}
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          shared-key: release-package-${{ runner.os }}-${{ matrix.target }}
-          cache-on-failure: true
-          cache-workspace-crates: false
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
-
-      - name: Build Rust dependencies
-        run: cargo build --release --target ${{ matrix.target }} --manifest-path src-tauri/Cargo.toml --locked
-
-  rust-deps-windows:
-    name: Build Rust Dependencies (Windows (x86_64))
-    needs: [runners, prepare]
-    if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: ${{ needs.runners.outputs.windows }}
-    continue-on-error: true
-    steps:
-      - name: Checkout private source code
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/VoiceWise
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
-
-      - name: Enable git long paths (Windows)
-        run: git config --system core.longpaths true
-
-      - name: "Optimize I/O for Windows (use D: drive)"
-        shell: pwsh
-        run: |
-          $cargoHome = "D:/a/_cargo"
-          $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
-          New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
-          New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
-          echo "CARGO_HOME=$cargoHome" >> $env:GITHUB_ENV
-          echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
-
-      - name: Setup Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
-        with:
-          shared-key: release-package-${{ runner.os }}-x86_64-pc-windows-msvc
-          cache-on-failure: true
-          cache-workspace-crates: false
-          workspaces: |
-            src-tauri -> target
-          env-vars: |
-            CARGO_HOME
-            CARGO_TARGET_DIR
-
-      - name: Build Rust dependencies
-        run: cargo build --release --target x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml --locked
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_BODY: ${{ needs.prepare.outputs.release_body }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: python3 scripts/release-publication.py create --channel stable
 
   package:
     name: Package (${{ matrix.name }})
-    needs: [runners, create-release, rust-deps]
+    needs: [runners, create-release]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     permissions:
@@ -623,19 +502,6 @@ jobs:
             os: ${{ needs.runners.outputs.macos_build }}
             target: aarch64-apple-darwin
             tauri_args: --target aarch64-apple-darwin
-            artifact_name: voicewise-macos-aarch64-apple-darwin
-            artifact_paths: |
-              src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-              src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app.tar.gz*
-
-          - name: macOS (x86_64)
-            os: ${{ needs.runners.outputs.macos }}
-            target: x86_64-apple-darwin
-            tauri_args: --target x86_64-apple-darwin
-            artifact_name: voicewise-macos-x86_64-apple-darwin
-            artifact_paths: |
-              src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
-              src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app.tar.gz*
 
     steps:
       - name: Checkout private source code
@@ -645,14 +511,13 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.create-release.outputs.ref }}
 
-      - name: Checkout runner support scripts
-        if: ${{ runner.os == 'macOS' }}
+      - name: Checkout release support scripts
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           repository: Voice-Wise/release
           ref: ${{ github.sha }}
           path: .release-tools
-          sparse-checkout: scripts/runner
+          sparse-checkout: scripts
           persist-credentials: false
 
       - name: Prepare persistent local build cache
@@ -748,9 +613,8 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tauriScript: "bun run tauri"
-          tagName: v${{ needs.create-release.outputs.version }}
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseBody: ""
+          includeUpdaterJson: false
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
@@ -763,9 +627,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: "bun run tauri"
-          tagName: v${{ needs.create-release.outputs.version }}
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseBody: ""
+          includeUpdaterJson: false
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
@@ -806,27 +669,14 @@ jobs:
             }
           }
 
-      - name: Upload Sentry debug symbols artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: sentry-debug-${{ matrix.target }}
-          path: ${{ runner.temp }}/sentry-debug/${{ matrix.target }}
-          if-no-files-found: warn
-
-      - name: Upload Sentry sourcemap artifact
-        if: ${{ matrix.target == 'aarch64-apple-darwin' }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: sentry-dist
-          path: dist
-          if-no-files-found: error
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: ${{ matrix.artifact_paths }}
-          if-no-files-found: error
+      - name: Upload source maps and debug symbols to Sentry
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_SOURCEMAP_DIR: ${{ runner.os == 'macOS' && 'dist' || 'sentry-no-sourcemaps' }}
+          SENTRY_REQUIRE_SOURCEMAPS: ${{ runner.os == 'macOS' }}
+          SENTRY_DEBUG_ROOT: ${{ runner.temp }}/sentry-debug
+        run: bash .release-tools/scripts/upload-sentry-release-assets.sh
 
       - name: Clean up Apple signing materials
         if: ${{ always() && runner.os == 'macOS' }}
@@ -838,10 +688,9 @@ jobs:
 
   package-windows:
     name: Package (Windows (x86_64))
-    needs: [runners, create-release, rust-deps-windows]
+    needs: [runners, create-release]
     if: ${{ needs.create-release.outputs.skip_windows != 'true' }}
     runs-on: ${{ needs.runners.outputs.windows }}
-    continue-on-error: true
     permissions:
       contents: write
     env:
@@ -856,6 +705,15 @@ jobs:
           repository: Voice-Wise/VoiceWise
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.create-release.outputs.ref }}
+
+      - name: Checkout release support scripts
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/release
+          ref: ${{ github.sha }}
+          path: .release-tools
+          sparse-checkout: scripts
+          persist-credentials: false
 
       - name: Enable git long paths (Windows)
         run: git config --system core.longpaths true
@@ -926,9 +784,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: "bun run tauri"
-          tagName: v${{ needs.create-release.outputs.version }}
           releaseId: ${{ needs.create-release.outputs.release_id }}
-          releaseBody: ""
+          includeUpdaterJson: false
           args: --target x86_64-pc-windows-msvc --bundles nsis
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
@@ -952,98 +809,48 @@ jobs:
             }
           }
 
-      - name: Upload Sentry debug symbols artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: sentry-debug-x86_64-pc-windows-msvc
-          path: ${{ runner.temp }}/sentry-debug/x86_64-pc-windows-msvc
-          if-no-files-found: warn
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: voicewise-windows-x86_64-pc-windows-msvc
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe*
-          if-no-files-found: error
-
-  sentry-release:
-    name: Upload Sentry Assets
-    needs: [runners, create-release, package, package-windows]
-    if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.package-windows.result == 'success' || needs.package-windows.result == 'failure') }}
-    runs-on: ${{ needs.runners.outputs.ubuntu }}
-    steps:
-      - name: Checkout release repo
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-      - name: Download Sentry sourcemap artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: sentry-dist
-          path: ${{ runner.temp }}/sentry/dist
-
-      - name: Download Sentry debug artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: sentry-debug-*
-          path: ${{ runner.temp }}/sentry/debug
-          merge-multiple: true
-
-      - name: Upload source map and debug symbols to Sentry
+      - name: Upload source maps and debug symbols to Sentry
+        shell: bash
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_RELEASE: voicewise@${{ needs.create-release.outputs.version }}
-          SENTRY_DIST: stable-${{ github.run_number }}-${{ github.run_attempt }}
-          SENTRY_SOURCEMAP_DIR: ${{ runner.temp }}/sentry/dist
-          SENTRY_DEBUG_ROOT: ${{ runner.temp }}/sentry/debug
-        run: |
-          bash scripts/upload-sentry-release-assets.sh
+          SENTRY_SOURCEMAP_DIR: ${{ runner.os == 'macOS' && 'dist' || 'sentry-no-sourcemaps' }}
+          SENTRY_REQUIRE_SOURCEMAPS: ${{ runner.os == 'macOS' }}
+          SENTRY_DEBUG_ROOT: ${{ runner.temp }}/sentry-debug
+        run: bash .release-tools/scripts/upload-sentry-release-assets.sh
 
   publish-manifest:
-    name: Publish Stable Manifest
-    needs: [runners, create-release, package, package-windows, sentry-release]
-    if: ${{ always() && needs.create-release.result == 'success' && needs.package.result == 'success' && needs.sentry-release.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.package-windows.result == 'success' || needs.package-windows.result == 'failure') }}
+    name: Publish Validated Release
+    needs: [runners, create-release, test, test-windows, package, cloud-regression, cloud-regression-windows, package-windows]
+    if: ${{ always() && needs.create-release.result == 'success' && needs.test.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.test-windows.result == 'success') && needs.cloud-regression.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || (needs.cloud-regression-windows.result == 'success' && needs.package-windows.result == 'success')) }}
     runs-on: ${{ needs.runners.outputs.ubuntu }}
     permissions:
       contents: write
     steps:
       - name: Checkout release repo
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          ref: main
 
-      - name: Generate combined manifest
+      - name: Validate manifest and publish draft
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          python scripts/generate-updater-manifests.py \
-            --owner "Voice-Wise" \
-            --repo "release" \
-            --tag "v${{ needs.create-release.outputs.version }}" \
-            --out-dir "." \
-            --channel stable \
-            --format combined
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+          RELEASE_VERSION: ${{ needs.create-release.outputs.version }}
+          SKIP_WINDOWS: ${{ needs.create-release.outputs.skip_windows }}
+        run: python3 scripts/release-publication.py publish --channel stable
 
-      - name: Upload manifest to versioned release
+  cleanup-draft:
+    name: Clean Unpublished Draft
+    needs: [runners, create-release, package, publish-manifest, package-windows]
+    if: ${{ always() && needs.create-release.outputs.release_id != '' }}
+    runs-on: ${{ needs.runners.outputs.ubuntu }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release repo
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Delete only this run's unpublished draft
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "v${{ needs.create-release.outputs.version }}" \
-            latest.json --clobber
-
-      - name: Update stable tag release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          VERSION="${{ needs.create-release.outputs.version }}"
-
-          # Delete existing stable release if exists
-          gh release delete stable --yes --cleanup-tag 2>/dev/null || true
-
-          # Create new stable release pointing to the same tag
-          gh release create stable \
-            --target "v${VERSION}" \
-            --title "VoiceWise Latest Stable (v${VERSION})" \
-            --notes "Latest stable release: v${VERSION}" \
-            latest.json
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+        run: python3 scripts/release-publication.py cleanup --channel stable
