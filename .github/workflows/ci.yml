@@ -115,7 +115,6 @@ jobs:
         with:
           shared-key: ci-${{ runner.os }}-rust
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -170,7 +169,6 @@ jobs:
         with:
           shared-key: ci-${{ runner.os }}-rust
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |

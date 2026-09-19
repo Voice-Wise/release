@@ -223,7 +223,6 @@ jobs:
         with:
           shared-key: release-test-${{ runner.os }}-aarch64-apple-darwin
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -280,7 +279,6 @@ jobs:
         with:
           shared-key: release-test-${{ runner.os }}-x86_64-pc-windows-msvc
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -346,7 +344,6 @@ jobs:
         with:
           shared-key: release-cloud-${{ runner.os }}
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -400,7 +397,6 @@ jobs:
         with:
           shared-key: release-cloud-${{ runner.os }}
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -525,7 +521,6 @@ jobs:
         with:
           shared-key: release-package-${{ runner.os }}-${{ matrix.target }}
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -710,7 +705,6 @@ jobs:
         with:
           shared-key: release-package-${{ runner.os }}-x86_64-pc-windows-msvc
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |

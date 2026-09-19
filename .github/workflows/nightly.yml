@@ -218,7 +218,6 @@ jobs:
         with:
           shared-key: nightly-test-${{ runner.os }}-aarch64-apple-darwin
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -276,7 +275,6 @@ jobs:
         with:
           shared-key: nightly-test-${{ runner.os }}-x86_64-pc-windows-msvc
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |
@@ -402,7 +400,6 @@ jobs:
         with:
           shared-key: nightly-package-${{ runner.os }}-${{ matrix.target }}
           cache-on-failure: true
-          cache-workspace-crates: false
           workspaces: |
             src-tauri -> target
           env-vars: |

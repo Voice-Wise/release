@@ -25,6 +25,11 @@ SENTRY_SOURCEMAP_DIR="${SENTRY_SOURCEMAP_DIR:-sentry-input/dist}"
 SENTRY_DEBUG_ROOT="${SENTRY_DEBUG_ROOT:-sentry-input/debug}"
 
 SENTRY_TOOL_DIR="${VOICEWISE_RUNNER_ROOT:-${RUNNER_TEMP:-/tmp}}/tools/sentry-3.8.0"
+# Git Bash 的 PATH 使用 POSIX 路径，避免 Windows 盘符冒号拆断路径。
+if command -v cygpath >/dev/null 2>&1; then
+  SENTRY_TOOL_DIR="$(cygpath -u "$SENTRY_TOOL_DIR")"
+  SENTRY_DEBUG_ROOT="$(cygpath -u "$SENTRY_DEBUG_ROOT")"
+fi
 export PATH="${SENTRY_TOOL_DIR}:${PATH}"
 if ! command -v sentry-cli >/dev/null 2>&1; then
   case "$(uname -s)" in

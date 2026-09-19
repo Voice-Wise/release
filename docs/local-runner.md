@@ -34,4 +34,4 @@ macOS 服务随用户登录启动，机器需联网且保持唤醒。runner 离�
 
 Windows 仍为 x86_64，默认跳过；手动启用 Windows 后，其测试与打包也必须通过。签名、公证和自动清理机制保持不变。
 
-前端检查在独立 Linux job 与 Rust 测试并行。Rust 测试 job 不安装前端依赖，单元测试与功能测试启用相同的 `functional-tests` feature，减少重复编译；应用正式构建的 feature 与优化级别不变。
+前端检查在独立 Linux job 与 Rust 测试并行。Rust 测试 job 不安装前端依赖。单元测试与功能测试保留各自的 feature 配置，避免把要求主线程的原生启动测试混入单测线程；应用正式构建的 feature 与优化级别不变。
