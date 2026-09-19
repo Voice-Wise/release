@@ -27,9 +27,35 @@ SENTRY_DEBUG_ROOT="${SENTRY_DEBUG_ROOT:-sentry-input/debug}"
 SENTRY_TOOL_DIR="${VOICEWISE_RUNNER_ROOT:-${RUNNER_TEMP:-/tmp}}/tools/sentry-3.8.0"
 export PATH="${SENTRY_TOOL_DIR}:${PATH}"
 if ! command -v sentry-cli >/dev/null 2>&1; then
-  mkdir -p "$SENTRY_TOOL_DIR" "${RUNNER_TEMP:-/tmp}/sentry-installer-home"
-  curl -fsSL https://sentry.io/get-cli/ | \
-    HOME="${RUNNER_TEMP:-/tmp}/sentry-installer-home" INSTALL_DIR="$SENTRY_TOOL_DIR" SENTRY_CLI_VERSION=3.8.0 bash
+  case "$(uname -s)" in
+    Darwin)
+      sentry_asset="sentry-cli-Darwin-universal"
+      sentry_sha="2c26914636c47ab9bf9e710484ad7b44d371cbec8bd29cafb36b3cf877bf4285"
+      ;;
+    Linux)
+      sentry_asset="sentry-cli-Linux-x86_64"
+      sentry_sha="13f8cb34ae01a6a272d7d7c22e277a105286615b4020de900ea95a8de47cdbb6"
+      ;;
+    MINGW*|MSYS*|CYGWIN*)
+      sentry_asset="sentry-cli-Windows-x86_64.exe"
+      sentry_sha="2257cf6805a616f5c3ee291a549ebbba021190048b646adc006beb4e8cdef7fd"
+      ;;
+    *) echo "不支持的 Sentry CLI 平台" >&2; exit 1 ;;
+  esac
+  mkdir -p "$SENTRY_TOOL_DIR"
+  sentry_download="$SENTRY_TOOL_DIR/sentry-cli.download"
+  curl --fail --silent --show-error --location --retry 3 \
+    "https://github.com/getsentry/sentry-cli/releases/download/3.8.0/${sentry_asset}" \
+    --output "$sentry_download"
+  python3 - "$sentry_download" "$sentry_sha" <<'PY'
+import hashlib
+import sys
+from pathlib import Path
+if hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest() != sys.argv[2]:
+    raise SystemExit("Sentry CLI 下载校验失败")
+PY
+  chmod +x "$sentry_download"
+  mv "$sentry_download" "$SENTRY_TOOL_DIR/sentry-cli"
 fi
 
 if ! sentry-cli releases --org "${SENTRY_ORG}" info "${SENTRY_RELEASE}" >/dev/null 2>&1; then
