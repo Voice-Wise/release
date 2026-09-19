@@ -8,3 +8,5 @@ Functional test policy:
 
 - Nightly builds run only local functional tests that do not require API keys or real provider resources.
 - Release builds run the full gate: local functional tests plus cloud regression tests that require provider credentials.
+
+本机 macOS ARM 构建、GitHub Secrets 使用及云端切换方式见 [本机 runner 说明](docs/local-runner.md)。

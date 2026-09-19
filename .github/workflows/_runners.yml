@@ -9,6 +9,9 @@ on:
       macos:
         description: "macOS runner label"
         value: ${{ jobs.runners.outputs.macos }}
+      macos_build:
+        description: "macOS ARM build runner label"
+        value: ${{ jobs.runners.outputs.macos_build }}
       windows:
         description: "Windows runner label"
         value: ${{ jobs.runners.outputs.windows }}
@@ -16,6 +19,7 @@ on:
 env:
   RUNNER_UBUNTU: &runner_ubuntu ubuntu-latest
   RUNNER_MACOS: macos-latest
+  RUNNER_MACOS_BUILD: ${{ vars.MACOS_BUILD_RUNNER || 'macos-latest' }}
   RUNNER_WINDOWS: windows-latest
 
 jobs:
@@ -25,6 +29,7 @@ jobs:
     outputs:
       ubuntu: ${{ steps.runners.outputs.ubuntu }}
       macos: ${{ steps.runners.outputs.macos }}
+      macos_build: ${{ steps.runners.outputs.macos_build }}
       windows: ${{ steps.runners.outputs.windows }}
     steps:
       - name: Export runner labels
@@ -34,5 +39,6 @@ jobs:
           {
             echo "ubuntu=${RUNNER_UBUNTU}"
             echo "macos=${RUNNER_MACOS}"
+            echo "macos_build=${RUNNER_MACOS_BUILD}"
             echo "windows=${RUNNER_WINDOWS}"
           } >> "$GITHUB_OUTPUT"

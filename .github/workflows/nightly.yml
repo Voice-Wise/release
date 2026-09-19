@@ -66,7 +66,7 @@ jobs:
         shell: bash
         env:
           SKIP_WINDOWS: ${{ steps.params.outputs.skip_windows }}
-          RUNNER_MACOS: ${{ needs.runners.outputs.macos }}
+          RUNNER_MACOS: ${{ needs.runners.outputs.macos_build }}
           RUNNER_WINDOWS: ${{ needs.runners.outputs.windows }}
         run: |
           set -euo pipefail
@@ -379,6 +379,7 @@ jobs:
     name: Build Rust Dependencies (${{ matrix.name }})
     needs: [prepare]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     continue-on-error: ${{ matrix.allow_failure == true }}
     env:
       LIVETYPE_BUILD_COMMIT_SHA: ${{ needs.prepare.outputs.source_commit_sha }}
@@ -392,6 +393,21 @@ jobs:
           repository: Voice-Wise/VoiceWise
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.prepare.outputs.ref }}
+
+      - name: Checkout runner support scripts
+        if: ${{ runner.os == 'macOS' }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/release
+          ref: ${{ github.sha }}
+          path: .release-tools
+          sparse-checkout: scripts/runner
+          persist-credentials: false
+
+      - name: Prepare persistent local build cache
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: bash
+        run: bash .release-tools/scripts/runner/prepare-build-cache.sh
 
       - name: Enable git long paths (Windows)
         if: ${{ runner.os == 'Windows' }}
@@ -415,6 +431,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Cargo
+        if: ${{ runner.environment != 'self-hosted' }}
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
           shared-key: nightly-package-${{ runner.os }}-${{ matrix.target }}
@@ -433,6 +450,7 @@ jobs:
     name: Package (${{ matrix.name }})
     needs: [prepare, create-release, rust-deps]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
     continue-on-error: ${{ matrix.allow_failure == true }}
     permissions:
       contents: write
@@ -454,6 +472,21 @@ jobs:
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ needs.create-release.outputs.ref }}
 
+      - name: Checkout runner support scripts
+        if: ${{ runner.os == 'macOS' }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/release
+          ref: ${{ github.sha }}
+          path: .release-tools
+          sparse-checkout: scripts/runner
+          persist-credentials: false
+
+      - name: Prepare persistent local build cache
+        if: ${{ runner.environment == 'self-hosted' }}
+        shell: bash
+        run: bash .release-tools/scripts/runner/prepare-build-cache.sh
+
       - name: Enable git long paths (Windows)
         if: ${{ runner.os == 'Windows' }}
         run: git config --system core.longpaths true
@@ -474,11 +507,13 @@ jobs:
           echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
 
       - name: Setup Bun
+        if: ${{ runner.environment != 'self-hosted' }}
         uses: oven-sh/setup-bun@8f24390df009a496891208e5e36b8a1de1f45135 # v2.0.2
         with:
           bun-version: "1.3.2"
 
       - name: Cache Bun
+        if: ${{ runner.environment != 'self-hosted' }}
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
@@ -497,6 +532,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache Cargo
+        if: ${{ runner.environment != 'self-hosted' }}
         uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
         with:
           shared-key: nightly-package-${{ runner.os }}-${{ matrix.target }}
@@ -546,6 +582,7 @@ jobs:
 
       - name: Install NSIS (Windows)
         if: ${{ runner.os == 'Windows' }}
+        shell: pwsh
         run: |
           choco install nsis -y --no-progress
           if (Test-Path 'C:\Program Files (x86)\NSIS') {
@@ -554,37 +591,13 @@ jobs:
             'C:\Program Files\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
 
-      - name: Import Apple code signing cert (early)
+      - name: Import Apple code signing cert (temporary keychain)
         if: ${{ runner.os == 'macOS' }}
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
         shell: bash
-        run: |
-          set -euo pipefail
-
-          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-          KEYCHAIN_PATH="$RUNNER_TEMP/voicewise-build.keychain-db"
-          CERT_PATH="$RUNNER_TEMP/apple_cert.p12"
-
-          export CERT_PATH
-          python3 - <<'PY'
-          import base64, os, pathlib
-
-          b64 = os.environ["APPLE_CERTIFICATE"]
-          b64 = "".join(b64.split())
-          data = base64.b64decode(b64)
-          pathlib.Path(os.environ["CERT_PATH"]).write_bytes(data)
-          PY
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -T /usr/bin/codesign -T /usr/bin/security
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychains -d user -s "$KEYCHAIN_PATH"
-          security default-keychain -s "$KEYCHAIN_PATH"
-          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+        run: python3 .release-tools/scripts/runner/apple-signing.py prepare
 
       - name: Validate Apple notarization credentials
         if: ${{ runner.os == 'macOS' }}
@@ -623,8 +636,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -644,8 +655,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         with:
           tauriScript: "bun run tauri"
@@ -741,6 +750,14 @@ jobs:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.artifact_paths }}
           if-no-files-found: error
+
+      - name: Clean up Apple signing materials
+        if: ${{ always() && runner.os == 'macOS' }}
+        shell: bash
+        run: |
+          if [[ -f .release-tools/scripts/runner/apple-signing.py ]]; then
+            python3 .release-tools/scripts/runner/apple-signing.py cleanup
+          fi
 
   sentry-release:
     name: Upload Sentry Assets
