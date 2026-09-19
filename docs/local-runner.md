@@ -35,3 +35,19 @@ macOS 服务随用户登录启动，机器需联网且保持唤醒。runner 离�
 Windows 仍为 x86_64，默认跳过；手动启用 Windows 后，其测试与打包也必须通过。签名、公证和自动清理机制保持不变。
 
 前端检查在独立 Linux job 与 Rust 测试并行。Rust 测试 job 不安装前端依赖。单元测试与功能测试保留各自的 feature 配置，避免把要求主线程的原生启动测试混入单测线程；应用正式构建的 feature 与优化级别不变。
+
+## 2026-09-19 实测验收
+
+以下为相同业务代码、默认仅构建 macOS ARM64 时的完整 Nightly 耗时；CI 脚本及构建 SHA 不同，缓存和云端调度仍会影响单次结果。
+
+| 配置 | Nightly 总耗时 | 打包 job |
+| --- | --- | --- |
+| 原云端构建 | 11 分 26 秒 | 7 分 17 秒 |
+| 本机 runner，原流水线 | 7 分 01 秒 | 3 分 31 秒 |
+| 本机 runner，并行优化后 | 3 分 14 秒 | 2 分 14 秒 |
+
+[最终验收运行](https://github.com/Voice-Wise/release/actions/runs/35443903760) 对应源码 `25ea79b4d488258640e1c146e6dc77adb4637971`。718 项 Rust 单测通过，2 项原有测试忽略；211 项前端单测、6 个本地功能场景通过。对比本机原流水线，总耗时缩短约 54%。
+
+已核对公开下载链接、GitHub 资产 SHA-256 与本机产物一致、清单与二进制内嵌源码 SHA 一致；`codesign`、`stapler`、Gatekeeper 校验通过，Sentry sourcemap 上传成功，临时签名状态目录为空。
+
+[中间失败运行](https://github.com/Voice-Wise/release/actions/runs/35443677126) 验证了测试失败时不发布、不替换旧 Nightly、自动删除草稿的路径。最终运行的 Actions Artifact 数量为零。Windows 与正式版云端回归门禁保留，本次未触发 Windows 或新的正式版本发布。
