@@ -23,7 +23,8 @@ class PublicationTests(unittest.TestCase):
         })
         self.environment.start()
         self.addCleanup(self.environment.stop)
-        self.draft = {"id": 42, "draft": True, "tag_name": "build-nightly-123-2"}
+        self.draft = {"id": 42, "draft": True, "tag_name": "build-nightly-123-2",
+                      "target_commitish": "b" * 40}
 
     def test_publish_uploads_manifest_before_replacing_old_release(self):
         events = []
@@ -101,6 +102,7 @@ class PublicationTests(unittest.TestCase):
         alias = gh.call_args.args
         self.assertEqual(alias[:3], ("release", "create", "stable"))
         self.assertIn("--latest=false", alias)
+        self.assertEqual(alias[alias.index("--target") + 1], "b" * 40)
 
     def test_lookup_does_not_ignore_permission_or_network_errors(self):
         for status in (403, 500, 404):
