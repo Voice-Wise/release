@@ -87,6 +87,21 @@ class PublicationTests(unittest.TestCase):
                 MODULE.publish("owner/repo", "stable", 42)
         generate.assert_not_called()
 
+    def test_stable_version_is_latest_and_alias_cannot_replace_it(self):
+        draft = {**self.draft, "tag_name": "build-stable-123-2"}
+        with patch.dict(os.environ, RELEASE_VERSION="0.1.31"), \
+             patch.object(MODULE, "api", return_value=draft) as api, \
+             patch.object(MODULE, "find_release", return_value=None), \
+             patch.object(MODULE, "generate_manifest", return_value=Path("latest.json")), \
+             patch.object(MODULE, "gh") as gh:
+            MODULE.publish("owner/repo", "stable", 42)
+        self.assertEqual(api.call_args.args[3], {
+            "tag_name": "v0.1.31", "draft": False, "make_latest": "true",
+        })
+        alias = gh.call_args.args
+        self.assertEqual(alias[:3], ("release", "create", "stable"))
+        self.assertIn("--latest=false", alias)
+
     def test_lookup_does_not_ignore_permission_or_network_errors(self):
         for status in (403, 500, 404):
             with self.subTest(status=status), patch.object(MODULE, "api", side_effect=

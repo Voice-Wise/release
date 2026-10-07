@@ -107,6 +107,7 @@ def publish(repo, channel, release_id):
             if find_release(repo, "stable"):
                 gh("release", "delete", "stable", "--repo", repo, "--yes", "--cleanup-tag")
             gh("release", "create", "stable", "--repo", repo, "--target", tag,
+               "--latest=false",
                "--title", f"VoiceWise Latest Stable (v{version})",
                "--notes", f"Latest stable release: v{version}", str(manifest))
 
