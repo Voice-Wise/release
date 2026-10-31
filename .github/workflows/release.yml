@@ -289,7 +289,12 @@ jobs:
         run: bun run test:rust
 
       - name: Run functional tests (no API key)
-        run: bun run test:functional
+        shell: pwsh
+        run: |
+          cargo rustc --manifest-path src-tauri/Cargo.toml --features functional-tests --bin functional_suite --locked -- -C link-arg=/STACK:16777216
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:CARGO_TARGET_DIR/debug/functional_suite.exe" local
+          exit $LASTEXITCODE
 
   cloud-regression:
     name: Cloud Regression (${{ matrix.name }})
@@ -404,7 +409,12 @@ jobs:
             CARGO_TARGET_DIR
 
       - name: Run cloud functional tests (API key)
-        run: bun run test:functional:cloud
+        shell: pwsh
+        run: |
+          cargo rustc --manifest-path src-tauri/Cargo.toml --features functional-tests --bin functional_suite --locked -- -C link-arg=/STACK:16777216
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:CARGO_TARGET_DIR/debug/functional_suite.exe" cloud
+          exit $LASTEXITCODE
 
   create-release:
     name: Create Build Draft
