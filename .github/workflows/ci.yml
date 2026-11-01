@@ -38,8 +38,12 @@ jobs:
       PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
   ci:
-    name: Run CI (macOS)
+    name: Run CI (macOS) / ${{ matrix.suite }}
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [rust, functional]
     # Test symbols are unnecessary; debug assertions and release profiles remain enabled.
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -78,6 +82,7 @@ jobs:
         with:
           shared-key: tests-${{ runner.os }}
           cache-on-failure: true
+          save-if: ${{ matrix.suite == 'rust' }}
           cache-bin: false
           workspaces: |
             src-tauri -> target
@@ -88,15 +93,21 @@ jobs:
             CARGO_PROFILE_TEST_DEBUG
 
       - name: Run Rust tests
+        if: matrix.suite == 'rust'
         run: node scripts/test-rust.mjs
 
       - name: Run functional tests
+        if: matrix.suite == 'functional'
         run: node scripts/test-functional.mjs
 
   ci-windows:
-    name: Run CI (Windows)
+    name: Run CI (Windows) / ${{ matrix.suite }}
     if: ${{ !contains(fromJSON('["true","1","yes"]'), format('{0}', github.event.client_payload.skip_windows || inputs.skip_windows || false)) }}
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [rust, functional]
     # Test symbols are unnecessary; debug assertions and release profiles remain enabled.
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -133,6 +144,7 @@ jobs:
         with:
           shared-key: tests-${{ runner.os }}
           cache-on-failure: true
+          save-if: ${{ matrix.suite == 'rust' }}
           cache-bin: false
           workspaces: |
             src-tauri -> target
@@ -143,9 +155,11 @@ jobs:
             CARGO_PROFILE_TEST_DEBUG
 
       - name: Run Rust tests
+        if: matrix.suite == 'rust'
         run: node scripts/test-rust.mjs
 
       - name: Run functional tests
+        if: matrix.suite == 'functional'
         # Windows main-thread stack must match the already-required cloud suite.
         # This changes only the functional binary link, not dependency compilation.
         shell: pwsh
