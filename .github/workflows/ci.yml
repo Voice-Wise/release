@@ -21,19 +21,16 @@ on:
         default: false
         type: boolean
 
+# Dispatch github.ref points at release/main; group by the SOURCE branch instead.
+# Unknown source branches and main/master must never cancel another commit.
 concurrency:
-  group: ci-${{ github.event.client_payload.sha || github.event.inputs.sha }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.client_payload.sender_repo || 'Voice-Wise/VoiceWise' }}-${{ github.event.client_payload.ref || inputs.ref || github.run_id }}-${{ ((github.event.client_payload.ref || inputs.ref) == 'main' || (github.event.client_payload.ref || inputs.ref) == 'master' || !(github.event.client_payload.ref || inputs.ref)) && github.run_id || 'latest' }}
+  cancel-in-progress: ${{ (github.event.client_payload.ref || inputs.ref) != '' && (github.event.client_payload.ref || inputs.ref) != 'main' && (github.event.client_payload.ref || inputs.ref) != 'master' }}
 
 jobs:
-  runners:
-    name: Load Runner Config
-    uses: ./.github/workflows/_runners.yml
-
   prepare:
     name: Prepare CI
-    needs: [runners]
-    runs-on: ${{ needs.runners.outputs.ubuntu }}
+    runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.params.outputs.sha }}
       ref: ${{ steps.params.outputs.ref }}
@@ -43,12 +40,12 @@ jobs:
         id: params
         run: |
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "sha=${{ github.event.client_payload.sha }}" >> $GITHUB_OUTPUT
-            echo "ref=${{ github.event.client_payload.ref }}" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.event.client_payload.sha }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.client_payload.ref }}" >> "$GITHUB_OUTPUT"
             skip_windows='${{ github.event.client_payload.skip_windows }}'
           else
-            echo "sha=${{ github.event.inputs.sha }}" >> $GITHUB_OUTPUT
-            echo "ref=${{ github.event.inputs.ref }}" >> $GITHUB_OUTPUT
+            echo "sha=${{ github.event.inputs.sha }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
             skip_windows='${{ inputs.skip_windows }}'
           fi
 
@@ -74,8 +71,8 @@ jobs:
 
   ci:
     name: Run CI (macOS)
-    needs: [runners, prepare]
-    runs-on: ${{ needs.runners.outputs.macos }}
+    needs: [prepare]
+    runs-on: macos-latest
     steps:
       - name: Checkout private source code
         uses: actions/checkout@v4
@@ -88,13 +85,13 @@ jobs:
         if: ${{ runner.os == 'Windows' }}
         run: git config --system core.longpaths true
 
-      - name: "Optimize I/O for Windows (use D: drive)"
+      - name: "Optimize I/O for Windows"
         if: ${{ runner.os == 'Windows' }}
         shell: pwsh
         run: |
-          $cargoHome = "D:/a/_cargo"
+          $cargoHome = Join-Path $env:RUNNER_TEMP "_cargo"
           $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
-          $bunCache = "D:/a/_bun-cache"
+          $bunCache = Join-Path $env:RUNNER_TEMP "_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
           New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
@@ -102,18 +99,13 @@ jobs:
           echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
           echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.2"
-
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ci-${{ runner.os }}-rust
+          shared-key: tests-${{ runner.os }}
           cache-on-failure: true
           workspaces: |
             src-tauri -> target
@@ -122,16 +114,16 @@ jobs:
             CARGO_TARGET_DIR
 
       - name: Run Rust tests
-        run: bun run test:rust
+        run: node scripts/test-rust.mjs
 
       - name: Run functional tests
-        run: bun run test:functional
+        run: node scripts/test-functional.mjs
 
   ci-windows:
     name: Run CI (Windows)
-    needs: [runners, prepare]
+    needs: [prepare]
     if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
-    runs-on: ${{ needs.runners.outputs.windows }}
+    runs-on: windows-latest
     steps:
       - name: Checkout private source code
         uses: actions/checkout@v4
@@ -143,12 +135,12 @@ jobs:
       - name: Enable git long paths (Windows)
         run: git config --system core.longpaths true
 
-      - name: "Optimize I/O for Windows (use D: drive)"
+      - name: "Optimize I/O for Windows"
         shell: pwsh
         run: |
-          $cargoHome = "D:/a/_cargo"
+          $cargoHome = Join-Path $env:RUNNER_TEMP "_cargo"
           $cargoTargetDir = Join-Path $env:GITHUB_WORKSPACE "src-tauri/target"
-          $bunCache = "D:/a/_bun-cache"
+          $bunCache = Join-Path $env:RUNNER_TEMP "_bun-cache"
           New-Item -ItemType Directory -Force -Path $cargoHome | Out-Null
           New-Item -ItemType Directory -Force -Path $cargoTargetDir | Out-Null
           New-Item -ItemType Directory -Force -Path $bunCache | Out-Null
@@ -156,18 +148,13 @@ jobs:
           echo "CARGO_TARGET_DIR=$cargoTargetDir" >> $env:GITHUB_ENV
           echo "BUN_INSTALL_CACHE_DIR=$bunCache" >> $env:GITHUB_ENV
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: "1.3.2"
-
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: ci-${{ runner.os }}-rust
+          shared-key: tests-${{ runner.os }}
           cache-on-failure: true
           workspaces: |
             src-tauri -> target
@@ -176,7 +163,7 @@ jobs:
             CARGO_TARGET_DIR
 
       - name: Run Rust tests
-        run: bun run test:rust
+        run: node scripts/test-rust.mjs
 
       - name: Run functional tests
-        run: bun run test:functional
+        run: node scripts/test-functional.mjs

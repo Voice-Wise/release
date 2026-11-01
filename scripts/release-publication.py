@@ -85,17 +85,20 @@ def generate_manifest(repo, release_id, tag, version, channel, directory):
     return path
 
 
-def publish(repo, channel, release_id):
+def publish(repo, channel, release_id, *, verify_only=False):
     release = api(repo, f"releases/{release_id}")
     validate_draft(release, channel)
     version = os.environ["RELEASE_VERSION"]
     tag = "nightly" if channel == "nightly" else f"v{version}"
     old = find_release(repo, tag)
-    if old and channel == "stable":
+    if old and channel == "stable" and not verify_only:
         raise RuntimeError(f"正式版本 {tag} 已发布，拒绝覆盖")
     with tempfile.TemporaryDirectory() as directory:
         manifest = generate_manifest(repo, release_id, tag, version, channel, Path(directory))
         gh("release", "upload", release["tag_name"], str(manifest), "--repo", repo, "--clobber")
+        if verify_only:
+            print("构建资产和更新清单验证通过；保留公开版本，草稿由 cleanup 清理。")
+            return
         # 测试门禁由工作流保证；资产、签名和清单全部就绪后才替换公开版本。
         if old:
             gh("release", "delete", tag, "--repo", repo, "--yes", "--cleanup-tag")
@@ -129,6 +132,9 @@ def main():
     repo = os.environ["GITHUB_REPOSITORY"]
     if args.action == "create":
         create(repo, args.channel)
+    elif args.action == "publish":
+        publish(repo, args.channel, int(os.environ["RELEASE_ID"]),
+                verify_only=os.environ.get("RELEASE_VERIFY_ONLY") == "true")
     else:
         globals()[args.action](repo, args.channel, int(os.environ["RELEASE_ID"]))
 

@@ -1,0 +1,84 @@
+name: Release Tooling
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tooling-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    # Keep this check present for docs-only PRs; workflow-level paths-ignore would
+    # leave a required check Pending. Only the expensive steps are conditional.
+    name: Workflow checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout tooling
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Detect executable changes
+        id: changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$BASE_SHA" && ! "$BASE_SHA" =~ ^0+$ ]]; then
+            git diff --name-only -z "$BASE_SHA" HEAD > "$RUNNER_TEMP/changed-paths"
+          else
+            git ls-files -z > "$RUNNER_TEMP/changed-paths"
+          fi
+          code=false
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              *.md|docs/*) ;;
+              *) code=true; break ;;
+            esac
+          done < "$RUNNER_TEMP/changed-paths"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Download prebuilt actionlint
+        if: steps.changes.outputs.code == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tool_dir="$RUNNER_TEMP/actionlint"
+          mkdir -p "$tool_dir"
+          gh release download v1.7.12 --repo rhysd/actionlint --dir "$tool_dir" \
+            --pattern actionlint_1.7.12_linux_amd64.tar.gz --pattern actionlint_1.7.12_checksums.txt
+          cd "$tool_dir"
+          sha256sum --check --ignore-missing actionlint_1.7.12_checksums.txt
+          tar -xzf actionlint_1.7.12_linux_amd64.tar.gz actionlint
+          echo "$tool_dir" >> "$GITHUB_PATH"
+
+      - name: Validate workflows
+        if: steps.changes.outputs.code == 'true'
+        run: actionlint
+
+      - name: Test release tooling
+        if: steps.changes.outputs.code == 'true'
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+          python3 -m unittest discover -s scripts/runner -p 'test_*.py'
+
+      - name: Summarize check
+        env:
+          CODE_CHANGED: ${{ steps.changes.outputs.code }}
+        run: |
+          if [[ "$CODE_CHANGED" == 'true' ]]; then
+            echo 'Workflows and release tooling verified.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Documentation-only change: executable checks skipped.' >> "$GITHUB_STEP_SUMMARY"
+          fi

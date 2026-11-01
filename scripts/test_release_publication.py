@@ -104,6 +104,28 @@ class PublicationTests(unittest.TestCase):
         self.assertIn("--latest=false", alias)
         self.assertEqual(alias[alias.index("--target") + 1], "b" * 40)
 
+    def test_verify_only_validates_existing_stable_without_public_writes(self):
+        draft = {**self.draft, "tag_name": "build-stable-123-2"}
+        with patch.object(MODULE, "api", return_value=draft) as api, \
+             patch.object(MODULE, "find_release", return_value={"id": 7}), \
+             patch.object(MODULE, "generate_manifest", return_value=Path("latest.json")) as generate, \
+             patch.object(MODULE, "gh") as gh:
+            MODULE.publish("owner/repo", "stable", 42, verify_only=True)
+        generate.assert_called_once()
+        api.assert_called_once_with("owner/repo", "releases/42")
+        self.assertEqual(gh.call_count, 1)
+        self.assertEqual(gh.call_args.args[:3], ("release", "upload", draft["tag_name"]))
+
+    def test_verify_only_still_rejects_invalid_manifest(self):
+        with patch.object(MODULE, "api", return_value=self.draft) as api, \
+             patch.object(MODULE, "find_release", return_value={"id": 7}), \
+             patch.object(MODULE, "generate_manifest", side_effect=RuntimeError("缺少签名")), \
+             patch.object(MODULE, "gh") as gh:
+            with self.assertRaisesRegex(RuntimeError, "签名"):
+                MODULE.publish("owner/repo", "nightly", 42, verify_only=True)
+        api.assert_called_once_with("owner/repo", "releases/42")
+        gh.assert_not_called()
+
     def test_lookup_does_not_ignore_permission_or_network_errors(self):
         for status in (403, 500, 404):
             with self.subTest(status=status), patch.object(MODULE, "api", side_effect=
