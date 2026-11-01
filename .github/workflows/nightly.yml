@@ -218,7 +218,7 @@ jobs:
           targets: aarch64-apple-darwin
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 (Node 24)
         with:
           shared-key: tests-${{ runner.os }}
           cache-on-failure: true
@@ -273,7 +273,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Cache Cargo
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 (Node 24)
         with:
           shared-key: tests-${{ runner.os }}
           cache-on-failure: true
@@ -401,7 +401,7 @@ jobs:
 
       - name: Cache Cargo
         if: ${{ runner.environment != 'self-hosted' }}
-        uses: Swatinem/rust-cache@9d47c6ad4b02e050fd481d890b2ea34778fd09d6 # v2.7.8
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2 (Node 24)
         with:
           shared-key: package-${{ runner.os }}-${{ matrix.target }}
           cache-on-failure: true
