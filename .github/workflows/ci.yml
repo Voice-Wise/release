@@ -27,51 +27,24 @@ concurrency:
   group: ci-${{ github.event.client_payload.sender_repo || 'Voice-Wise/VoiceWise' }}-${{ github.event.client_payload.ref || inputs.ref || github.run_id }}-${{ ((github.event.client_payload.ref || inputs.ref) == 'main' || (github.event.client_payload.ref || inputs.ref) == 'master' || !(github.event.client_payload.ref || inputs.ref)) && github.run_id || 'latest' }}
   cancel-in-progress: ${{ (github.event.client_payload.ref || inputs.ref) != '' && (github.event.client_payload.ref || inputs.ref) != 'main' && (github.event.client_payload.ref || inputs.ref) != 'master' }}
 
+# Keep debug assertions and the complete test matrix; test binaries do not need
+# DWARF/PDB symbols. Release-package profiles and uploaded symbols are unchanged.
+env:
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+
 jobs:
-  prepare:
-    name: Prepare CI
-    runs-on: ubuntu-latest
-    outputs:
-      sha: ${{ steps.params.outputs.sha }}
-      ref: ${{ steps.params.outputs.ref }}
-      skip_windows: ${{ steps.params.outputs.skip_windows }}
-    steps:
-      - name: Get parameters
-        id: params
-        run: |
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "sha=${{ github.event.client_payload.sha }}" >> "$GITHUB_OUTPUT"
-            echo "ref=${{ github.event.client_payload.ref }}" >> "$GITHUB_OUTPUT"
-            skip_windows='${{ github.event.client_payload.skip_windows }}'
-          else
-            echo "sha=${{ github.event.inputs.sha }}" >> "$GITHUB_OUTPUT"
-            echo "ref=${{ github.event.inputs.ref }}" >> "$GITHUB_OUTPUT"
-            skip_windows='${{ inputs.skip_windows }}'
-          fi
-
-          skip_windows="$(printf '%s' "${skip_windows:-false}" | tr '[:upper:]' '[:lower:]')"
-          case "${skip_windows}" in
-            true|1|yes)
-              echo "skip_windows=true" >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "skip_windows=false" >> "$GITHUB_OUTPUT"
-              ;;
-          esac
-
   test-frontend:
     name: Frontend Checks
-    needs: [prepare]
     uses: ./.github/workflows/_frontend-tests.yml
     with:
-      ref: ${{ needs.prepare.outputs.sha }}
+      ref: ${{ github.event.client_payload.sha || inputs.sha }}
       build: true
     secrets:
       PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
 
   ci:
     name: Run CI (macOS)
-    needs: [prepare]
     runs-on: macos-latest
     steps:
       - name: Checkout private source code
@@ -79,7 +52,7 @@ jobs:
         with:
           repository: Voice-Wise/VoiceWise
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.sha }}
+          ref: ${{ github.event.client_payload.sha || inputs.sha }}
 
       - name: Enable git long paths (Windows)
         if: ${{ runner.os == 'Windows' }}
@@ -107,11 +80,14 @@ jobs:
         with:
           shared-key: tests-${{ runner.os }}
           cache-on-failure: true
+          cache-bin: false
           workspaces: |
             src-tauri -> target
           env-vars: |
             CARGO_HOME
             CARGO_TARGET_DIR
+            CARGO_PROFILE_DEV_DEBUG
+            CARGO_PROFILE_TEST_DEBUG
 
       - name: Run Rust tests
         run: node scripts/test-rust.mjs
@@ -121,8 +97,7 @@ jobs:
 
   ci-windows:
     name: Run CI (Windows)
-    needs: [prepare]
-    if: ${{ needs.prepare.outputs.skip_windows != 'true' }}
+    if: ${{ !contains(fromJSON('["true","1","yes"]'), format('{0}', github.event.client_payload.skip_windows || inputs.skip_windows || false)) }}
     runs-on: windows-latest
     steps:
       - name: Checkout private source code
@@ -130,7 +105,7 @@ jobs:
         with:
           repository: Voice-Wise/VoiceWise
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.sha }}
+          ref: ${{ github.event.client_payload.sha || inputs.sha }}
 
       - name: Enable git long paths (Windows)
         run: git config --system core.longpaths true
@@ -156,11 +131,14 @@ jobs:
         with:
           shared-key: tests-${{ runner.os }}
           cache-on-failure: true
+          cache-bin: false
           workspaces: |
             src-tauri -> target
           env-vars: |
             CARGO_HOME
             CARGO_TARGET_DIR
+            CARGO_PROFILE_DEV_DEBUG
+            CARGO_PROFILE_TEST_DEBUG
 
       - name: Run Rust tests
         run: node scripts/test-rust.mjs

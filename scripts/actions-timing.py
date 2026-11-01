@@ -34,9 +34,11 @@ def job_row(run, job, log):
     # gh run view --log prefixes every line with job name, step name and timestamp.
     lines = []
     for line in log.splitlines():
-        parts = line.split("\t", 3)
-        if len(parts) == 4 and parts[0] == job["name"]:
-            lines.append((parts[2], parts[3]))
+        parts = line.split("\t", 2)
+        if len(parts) == 3 and parts[0] == job["name"]:
+            timestamp, separator, message = parts[2].partition(" ")
+            if separator:
+                lines.append((timestamp, message))
     for step in job.get("steps", []):
         if step.get("conclusion") == "skipped" or not execution_step(step["name"]):
             continue
