@@ -31,7 +31,6 @@ jobs:
     permissions:
       contents: write
     outputs:
-      release_body: ${{ steps.changelog.outputs.notes }}
       version: ${{ steps.params.outputs.version }}
       ref: ${{ steps.params.outputs.ref }}
       skip_windows: ${{ steps.params.outputs.skip_windows }}
@@ -66,8 +65,7 @@ jobs:
           repository: Voice-Wise/VoiceWise
           token: ${{ secrets.PRIVATE_REPO_TOKEN }}
           ref: ${{ steps.params.outputs.ref }}
-          fetch-depth: 0
-          fetch-tags: true
+          fetch-depth: 1
 
       - name: Verify stable tag + version consistency
         shell: bash
@@ -105,6 +103,23 @@ jobs:
         env:
           BUILD_REF: ${{ steps.params.outputs.ref }}
 
+
+  changelog:
+    name: Generate Release Notes
+    needs: [prepare]
+    runs-on: ubuntu-latest
+    outputs:
+      notes: ${{ steps.changelog.outputs.notes }}
+    steps:
+      - name: Checkout source history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
       - name: Generate changelog from commits
         id: changelog
         shell: bash
@@ -113,7 +128,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          CURRENT_TAG="${{ steps.params.outputs.ref }}"
+          CURRENT_TAG="${{ needs.prepare.outputs.ref }}"
           PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*' "${CURRENT_TAG}^" 2>/dev/null || true)"
 
           if [[ -n "${PREV_TAG}" ]]; then
@@ -450,7 +465,6 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_BODY: ${{ needs.prepare.outputs.release_body }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
         run: python3 scripts/release-publication.py create --channel stable
 
@@ -827,8 +841,8 @@ jobs:
 
   publish-manifest:
     name: Publish Validated Release
-    needs: [create-release, test-frontend, test, test-windows, package, cloud-regression, cloud-regression-windows, package-windows]
-    if: ${{ always() && needs.create-release.result == 'success' && needs.test.result == 'success' && needs.test-frontend.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.test-windows.result == 'success') && needs.cloud-regression.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || (needs.cloud-regression-windows.result == 'success' && needs.package-windows.result == 'success')) }}
+    needs: [changelog, create-release, test-frontend, test, test-windows, package, cloud-regression, cloud-regression-windows, package-windows]
+    if: ${{ always() && needs.changelog.result == 'success' && needs.create-release.result == 'success' && needs.test.result == 'success' && needs.test-frontend.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.test-windows.result == 'success') && needs.cloud-regression.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || (needs.cloud-regression-windows.result == 'success' && needs.package-windows.result == 'success')) }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -838,6 +852,7 @@ jobs:
 
       - name: Validate manifest and publish draft
         env:
+          RELEASE_BODY: ${{ needs.changelog.outputs.notes }}
           RELEASE_VERIFY_ONLY: ${{ inputs.verify_only || false }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

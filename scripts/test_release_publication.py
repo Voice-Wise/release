@@ -128,6 +128,17 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(gh.call_count, 1)
         self.assertEqual(gh.call_args.args[:3], ("release", "upload", draft["tag_name"]))
 
+    def test_parallel_release_notes_are_published_with_the_validated_draft(self):
+        draft = {**self.draft, "tag_name": "build-stable-123-2"}
+        with patch.dict(os.environ, RELEASE_BODY="## Changelog\n\n完整更新说明"), \
+             patch.object(MODULE, "api", return_value=draft) as api, \
+             patch.object(MODULE, "find_release", return_value=None), \
+             patch.object(MODULE, "generate_manifest", return_value=Path("latest.json")), \
+             patch.object(MODULE, "gh"):
+            MODULE.publish("owner/repo", "stable", 42)
+        self.assertEqual(api.call_args.args[3]["body"], "## Changelog\n\n完整更新说明")
+        self.assertFalse(api.call_args.args[3]["draft"])
+
     def test_verify_only_still_rejects_invalid_manifest(self):
         with patch.object(MODULE, "api", return_value=self.draft) as api, \
              patch.object(MODULE, "find_release", return_value={"id": 7}), \

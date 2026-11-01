@@ -154,10 +154,13 @@ def publish(repo, channel, release_id, *, verify_only=False):
         # 测试门禁由工作流保证；资产、签名和清单全部就绪后才替换公开版本。
         if old:
             gh("release", "delete", tag, "--repo", repo, "--yes", "--cleanup-tag")
-        api(repo, f"releases/{release_id}", "PATCH", {
+        publication = {
             "tag_name": tag, "draft": False,
             "make_latest": "false" if channel == "nightly" else "true",
-        })
+        }
+        if "RELEASE_BODY" in os.environ:
+            publication["body"] = os.environ["RELEASE_BODY"]
+        api(repo, f"releases/{release_id}", "PATCH", publication)
         if channel == "stable":
             if find_release(repo, "stable"):
                 gh("release", "delete", "stable", "--repo", repo, "--yes", "--cleanup-tag")
