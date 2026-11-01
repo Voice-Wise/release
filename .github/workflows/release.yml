@@ -619,6 +619,7 @@ jobs:
       - name: Upload completed build assets
         shell: bash
         env:
+          PYTHONUTF8: "1"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
           RELEASE_VERSION: ${{ needs.create-release.outputs.version }}
@@ -786,6 +787,7 @@ jobs:
       - name: Upload completed build assets
         shell: bash
         env:
+          PYTHONUTF8: "1"
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
           RELEASE_VERSION: ${{ needs.create-release.outputs.version }}

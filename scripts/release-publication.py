@@ -18,7 +18,7 @@ def gh(*args, payload=None):
         command += ["--input", "-"]
     result = subprocess.run(
         command, input=json.dumps(payload) if payload is not None else None,
-        text=True, capture_output=True, check=True,
+        encoding="utf-8", capture_output=True, check=True,
     )
     if args[0] == "api" and result.stdout.strip():
         return json.loads(result.stdout)
@@ -56,7 +56,8 @@ def retry_upload_request(operation):
     for attempt in range(3):
         try:
             return operation()
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as error:
+            print(error.stderr or str(error), file=sys.stderr, flush=True)
             if attempt == 2:
                 raise
             print(f"GitHub 资产请求失败，重试 {attempt + 1}/2", flush=True)
