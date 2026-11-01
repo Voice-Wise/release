@@ -65,7 +65,9 @@ jobs:
 
       - name: Validate workflows
         if: steps.changes.outputs.code == 'true'
-        run: actionlint
+        # GitHub supports queue:max, but actionlint 1.7.12 predates this schema
+        # field. Keep all other expression, shell and workflow checks enabled.
+        run: actionlint -ignore 'unexpected key "queue" for "concurrency" section'
 
       - name: Test release tooling
         if: steps.changes.outputs.code == 'true'

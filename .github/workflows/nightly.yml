@@ -602,6 +602,11 @@ jobs:
 
   publish-manifest:
     name: Publish Validated Release
+    # Builds/tests remain parallel; mutation of the shared nightly tag is serialized.
+    concurrency:
+      group: nightly-publication
+      cancel-in-progress: false
+      queue: max
     needs: [create-release, test-frontend, test, test-windows, package]
     if: ${{ always() && needs.create-release.result == 'success' && needs.test.result == 'success' && needs.test-frontend.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.test-windows.result == 'success') }}
     runs-on: ubuntu-latest
