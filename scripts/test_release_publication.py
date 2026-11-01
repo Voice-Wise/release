@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,6 +26,17 @@ class PublicationTests(unittest.TestCase):
         self.addCleanup(self.environment.stop)
         self.draft = {"id": 42, "draft": True, "tag_name": "build-nightly-123-2",
                       "target_commitish": "b" * 40}
+
+    def test_github_json_uses_utf8_even_with_a_legacy_windows_locale(self):
+        original_run = subprocess.run
+        expected = {"body": "中文公证说明"}
+        raw = json.dumps(expected, ensure_ascii=False).encode("utf-8")
+        def emit_json(command, **kwargs):
+            return original_run([sys.executable, "-c",
+                                 f"import sys; sys.stdout.buffer.write({raw!r})"], **kwargs)
+        with patch.object(MODULE.subprocess, "run", side_effect=emit_json), \
+             patch.object(MODULE.subprocess, "_text_encoding", return_value="cp1252"):
+            self.assertEqual(MODULE.gh("api", "test-response"), expected)
 
     def test_publish_uploads_manifest_before_replacing_old_release(self):
         events = []
