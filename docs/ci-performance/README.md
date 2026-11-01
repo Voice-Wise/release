@@ -103,6 +103,8 @@
 
 本次只修改 release 仓库。源码仓库 Voice-Wise/VoiceWise 的 trigger-ci.yml 仍按 SHA 分组，trigger-nightly.yml 仍可能取消旧 master 触发；未同步修改。在同步前，本接收端能保证已收到的主线请求完整执行，无法覆盖源头尚未发出就被取消的请求。本仓库 main 无分支保护或 ruleset，未修改保护配置；Workflow checks 保持稳定名称供 required check 使用。
 
+纯文档提交 68fa633 的 [Workflow checks](https://github.com/Voice-Wise/release/actions/runs/41301285911) 实测成功：仅 checkout、变更识别及摘要执行，actionlint 下载、workflow 校验和发布脚本测试全部 skipped；同名检查返回 success。
+
 ```sh
 python3 scripts/actions-timing.py --limit 50 --output /tmp/actions-baseline
 python3 scripts/actions-timing.py --run RUN_ID --output /tmp/actions-after

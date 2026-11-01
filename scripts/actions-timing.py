@@ -103,7 +103,7 @@ def main():
         rows = [row for group in pool.map(collect, runs) for row in group]
     if rows:
         with (args.output / "jobs.csv").open("w", newline="") as file:
-            writer = csv.DictWriter(file, fieldnames=list(rows[0]))
+            writer = csv.DictWriter(file, fieldnames=list(rows[0]), lineterminator="\n")
             writer.writeheader()
             writer.writerows(rows)
     print(f"已采集 {len(runs)} 次运行、{len(rows)} 个 job：{args.output / 'jobs.csv'}")
