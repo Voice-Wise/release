@@ -535,6 +535,9 @@ jobs:
           tauriScript: "bun run tauri"
           releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
+          # The action retries uploads separately, so a transient connection
+          # failure does not discard a completed build and notarization.
+          retryAttempts: 2
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
@@ -550,6 +553,9 @@ jobs:
           tauriScript: "bun run tauri"
           releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
+          # The action retries uploads separately, so a transient connection
+          # failure does not discard a completed build and notarization.
+          retryAttempts: 2
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
@@ -564,6 +570,9 @@ jobs:
           tauriScript: "bun run tauri"
           releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
+          # The action retries uploads separately, so a transient connection
+          # failure does not discard a completed build and notarization.
+          retryAttempts: 2
           args: ${{ matrix.tauri_args }}
           assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
