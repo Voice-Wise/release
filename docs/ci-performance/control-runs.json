@@ -1,0 +1,15 @@
+[
+  {
+    "conclusion": "success",
+    "createdAt": "2026-11-01T10:23:00Z",
+    "databaseId": 41297245788,
+    "event": "workflow_dispatch",
+    "headBranch": "ci-perf-baseline",
+    "headSha": "628dc31c138506f14f90a078a2cd0b93c86186c5",
+    "startedAt": "2026-11-01T10:23:00Z",
+    "status": "completed",
+    "updatedAt": "2026-11-01T10:25:32Z",
+    "url": "https://github.com/Voice-Wise/release/actions/runs/41297245788",
+    "workflowName": "CI (Cross-Repo)"
+  }
+]

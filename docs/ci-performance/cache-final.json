@@ -1,0 +1,59 @@
+{
+  "total_count": 6,
+  "actions_caches": [
+    {
+      "id": 9827120378,
+      "ref": "refs/heads/main",
+      "key": "v0-rust-tests-macOS-Darwin-arm64-1d331f2e-07726044",
+      "version": "1abee61379ced643619f07711b2e4a27518208c0f0d4e3e6587531a4527b468e",
+      "last_accessed_at": "2026-11-01T10:56:34.034731Z",
+      "created_at": "2026-11-01T10:27:35.598584Z",
+      "size_in_bytes": 617106311
+    },
+    {
+      "id": 9827525137,
+      "ref": "refs/heads/main",
+      "key": "v0-rust-package-Windows-x86_64-pc-windows-msvc-Windows_NT-x64-c4f2c4f1-1946249f",
+      "version": "b2b10f8338fedb4c31e4a313e25c87c47bb7799e5e47a429bf2a3d8a109d0cae",
+      "last_accessed_at": "2026-11-01T10:56:33.789398Z",
+      "created_at": "2026-11-01T10:40:03.376879Z",
+      "size_in_bytes": 624396226
+    },
+    {
+      "id": 9826846511,
+      "ref": "refs/heads/main",
+      "key": "bun-mccZL3MqHIHXoSqMoR3/opCSOTE=",
+      "version": "4793076103aa823b0a4c97942d7385d4346f77a3c30a0bad6e0f1d748becbab5",
+      "last_accessed_at": "2026-11-01T10:56:29.533516Z",
+      "created_at": "2026-11-01T10:18:44.562955Z",
+      "size_in_bytes": 36590238
+    },
+    {
+      "id": 9827201853,
+      "ref": "refs/heads/main",
+      "key": "Windows-bun-cc86bbeab8ef9238d854e09d0bb26f087c1f42b652a5971fdbe0eb6457991393",
+      "version": "95108a7b44b78631ff62e0bead86caf1f3c12c6983b200a2fe5039132673783f",
+      "last_accessed_at": "2026-11-01T10:55:36.290282Z",
+      "created_at": "2026-11-01T10:29:45.639136Z",
+      "size_in_bytes": 128549030
+    },
+    {
+      "id": 9827203717,
+      "ref": "refs/heads/main",
+      "key": "bun-lpXudrz+21QtzHdeU8/XHEfLl9g=",
+      "version": "3dbcc4f8dfd5fbbab9759602b7adb19c466cf9edfc277687f97ba9efbdc86d90",
+      "last_accessed_at": "2026-11-01T10:55:33.515930Z",
+      "created_at": "2026-11-01T10:29:48.617608Z",
+      "size_in_bytes": 39239217
+    },
+    {
+      "id": 9827251748,
+      "ref": "refs/heads/main",
+      "key": "v0-rust-tests-Windows-Windows_NT-x64-f02fe1d1-1946249f",
+      "version": "b2b10f8338fedb4c31e4a313e25c87c47bb7799e5e47a429bf2a3d8a109d0cae",
+      "last_accessed_at": "2026-11-01T10:55:01.941356Z",
+      "created_at": "2026-11-01T10:31:13.768281Z",
+      "size_in_bytes": 625881226
+    }
+  ]
+}

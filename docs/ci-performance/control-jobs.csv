@@ -1,0 +1,6 @@
+run_id,workflow,commit,job_id,job,conclusion,runner,dependency_wait_s,queue_s,prepare_s,compile_in_prepare_s,execute_s,job_elapsed_s,log_available,url
+41297245788,CI (Cross-Repo),628dc31c138506f14f90a078a2cd0b93c86186c5,124820557805,Load Runner Config / Export Runner Labels,success,GitHub Actions 1000004897,1.0,2.0,3.0,0,0,3.0,True,https://github.com/Voice-Wise/release/actions/runs/41297245788
+41297245788,CI (Cross-Repo),628dc31c138506f14f90a078a2cd0b93c86186c5,124820575434,Prepare CI,success,GitHub Actions 1000004898,6.0,2.0,2.0,0,0,2.0,True,https://github.com/Voice-Wise/release/actions/runs/41297245788
+41297245788,CI (Cross-Repo),628dc31c138506f14f90a078a2cd0b93c86186c5,124820593065,Run CI (macOS),success,GitHub Actions 1000004899,11.0,2.0,122.616,97.616,15.384,138.0,True,https://github.com/Voice-Wise/release/actions/runs/41297245788
+41297245788,CI (Cross-Repo),628dc31c138506f14f90a078a2cd0b93c86186c5,124820593133,Frontend Checks / Frontend Unit Tests,success,GitHub Actions 1000004900,11.0,1.0,13.0,0,29.0,42.0,True,https://github.com/Voice-Wise/release/actions/runs/41297245788
+41297245788,CI (Cross-Repo),628dc31c138506f14f90a078a2cd0b93c86186c5,124820593989,Run CI (Windows),skipped,,11.0,0,0,0,0,0,True,https://github.com/Voice-Wise/release/actions/runs/41297245788
