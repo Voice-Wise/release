@@ -101,7 +101,7 @@
 
 ## 范围边界与复现
 
-本次只修改 release 仓库。源码仓库 Voice-Wise/VoiceWise 的 trigger-ci.yml 仍按 SHA 分组，trigger-nightly.yml 仍可能取消旧 master 触发；未同步修改。在同步前，本接收端能保证已收到的主线请求完整执行，无法覆盖源头尚未发出就被取消的请求。本仓库 main 无分支保护或 ruleset，未修改保护配置；Workflow checks 保持稳定名称供 required check 使用。
+源码仓库 Voice-Wise/VoiceWise 的触发器已同步到远端默认分支 master，提交 [ac18a69e](https://github.com/Voice-Wise/VoiceWise/commit/ac18a69e976b0991b7df227c182ccf1d5d1e9b43)：分支 CI 按分支取消旧触发，main/master 使用独立运行分组，Nightly 每次主线推送独立触发且不取消旧提交。现有文档 paths-ignore 保留。源端 [Trigger Nightly Build](https://github.com/Voice-Wise/VoiceWise/actions/runs/41301839723) 已成功，自动调用 release/main 的 [优化版 Nightly](https://github.com/Voice-Wise/release/actions/runs/41301847369)。后续源码推送直接使用优化流程，无需再合并或切换测试分支。本仓库 main 无分支保护或 ruleset，未修改保护配置；Workflow checks 保持稳定名称供 required check 使用。
 
 纯文档提交 68fa633 的 [Workflow checks](https://github.com/Voice-Wise/release/actions/runs/41301285911) 实测成功：仅 checkout、变更识别及摘要执行，actionlint 下载、workflow 校验和发布脚本测试全部 skipped；同名检查返回 success。
 
