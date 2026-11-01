@@ -144,4 +144,11 @@ jobs:
         run: node scripts/test-rust.mjs
 
       - name: Run functional tests
-        run: node scripts/test-functional.mjs
+        # Windows main-thread stack must match the already-required cloud suite.
+        # This changes only the functional binary link, not dependency compilation.
+        shell: pwsh
+        run: |
+          cargo rustc --manifest-path src-tauri/Cargo.toml --features functional-tests --bin functional_suite --locked -- -C link-arg=/STACK:16777216
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & "$env:CARGO_TARGET_DIR/debug/functional_suite.exe" local
+          exit $LASTEXITCODE
