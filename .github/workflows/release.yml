@@ -24,12 +24,6 @@ on:
         default: false
         type: boolean
 
-# Keep debug assertions and the complete test matrix; test binaries do not need
-# DWARF/PDB symbols. Release-package profiles and uploaded symbols are unchanged.
-env:
-  CARGO_PROFILE_DEV_DEBUG: "0"
-  CARGO_PROFILE_TEST_DEBUG: "0"
-
 jobs:
   prepare:
     name: Prepare Release
@@ -186,6 +180,10 @@ jobs:
   test:
     name: Test (macOS ARM64)
     runs-on: macos-latest
+    # Test symbols are unnecessary; debug assertions and release profiles remain enabled.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Checkout private source code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -241,6 +239,10 @@ jobs:
     name: Test (Windows (x86_64))
     if: ${{ !contains(fromJSON('["true","1","yes"]'), format('{0}', github.event.client_payload.skip_windows || inputs.skip_windows || false)) }}
     runs-on: windows-latest
+    # Test symbols are unnecessary; debug assertions and release profiles remain enabled.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Checkout private source code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -306,6 +308,8 @@ jobs:
             os: macos-latest
 
     env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
 
     steps:
@@ -359,6 +363,8 @@ jobs:
     if: ${{ !contains(fromJSON('["true","1","yes"]'), format('{0}', github.event.client_payload.skip_windows || inputs.skip_windows || false)) }}
     runs-on: windows-latest
     env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
       VOICEWISE_TEST_AUTH_JSON: ${{ secrets.VOICEWISE_TEST_AUTH_JSON }}
     steps:
       - name: Checkout private source code
@@ -530,8 +536,6 @@ jobs:
           env-vars: |
             CARGO_HOME
             CARGO_TARGET_DIR
-            CARGO_PROFILE_DEV_DEBUG
-            CARGO_PROFILE_TEST_DEBUG
 
       - name: Install NSIS (Windows)
         if: ${{ runner.os == 'Windows' }}
@@ -717,8 +721,6 @@ jobs:
           env-vars: |
             CARGO_HOME
             CARGO_TARGET_DIR
-            CARGO_PROFILE_DEV_DEBUG
-            CARGO_PROFILE_TEST_DEBUG
 
       - name: Install NSIS (Windows)
         shell: pwsh

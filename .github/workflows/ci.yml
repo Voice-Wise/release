@@ -27,12 +27,6 @@ concurrency:
   group: ci-${{ github.event.client_payload.sender_repo || 'Voice-Wise/VoiceWise' }}-${{ github.event.client_payload.ref || inputs.ref || github.run_id }}-${{ ((github.event.client_payload.ref || inputs.ref) == 'main' || (github.event.client_payload.ref || inputs.ref) == 'master' || !(github.event.client_payload.ref || inputs.ref)) && github.run_id || 'latest' }}
   cancel-in-progress: ${{ (github.event.client_payload.ref || inputs.ref) != '' && (github.event.client_payload.ref || inputs.ref) != 'main' && (github.event.client_payload.ref || inputs.ref) != 'master' }}
 
-# Keep debug assertions and the complete test matrix; test binaries do not need
-# DWARF/PDB symbols. Release-package profiles and uploaded symbols are unchanged.
-env:
-  CARGO_PROFILE_DEV_DEBUG: "0"
-  CARGO_PROFILE_TEST_DEBUG: "0"
-
 jobs:
   test-frontend:
     name: Frontend Checks
@@ -46,6 +40,10 @@ jobs:
   ci:
     name: Run CI (macOS)
     runs-on: macos-latest
+    # Test symbols are unnecessary; debug assertions and release profiles remain enabled.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Checkout private source code
         uses: actions/checkout@v4
@@ -99,6 +97,10 @@ jobs:
     name: Run CI (Windows)
     if: ${{ !contains(fromJSON('["true","1","yes"]'), format('{0}', github.event.client_payload.skip_windows || inputs.skip_windows || false)) }}
     runs-on: windows-latest
+    # Test symbols are unnecessary; debug assertions and release profiles remain enabled.
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
     steps:
       - name: Checkout private source code
         uses: actions/checkout@v4
