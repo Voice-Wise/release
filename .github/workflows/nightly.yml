@@ -520,7 +520,8 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build + upload assets (macOS, notarized)
+      - name: Build signed bundles (macOS, notarized)
+        id: build-macos
         if: ${{ runner.os == 'macOS' && steps.notarization.outputs.enabled == 'true' }}
         uses: tauri-apps/tauri-action@v0.6.0
         env:
@@ -533,15 +534,11 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tauriScript: "bun run tauri"
-          releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
-          # The action retries uploads separately, so a transient connection
-          # failure does not discard a completed build and notarization.
-          retryAttempts: 2
           args: ${{ matrix.tauri_args }}
-          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
-      - name: Build + upload assets (macOS, signed only)
+      - name: Build signed bundles (macOS, signed only)
+        id: build-macos-signed
         if: ${{ runner.os == 'macOS' && steps.notarization.outputs.enabled != 'true' }}
         uses: tauri-apps/tauri-action@v0.6.0
         env:
@@ -551,15 +548,11 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         with:
           tauriScript: "bun run tauri"
-          releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
-          # The action retries uploads separately, so a transient connection
-          # failure does not discard a completed build and notarization.
-          retryAttempts: 2
           args: ${{ matrix.tauri_args }}
-          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
-      - name: Build + upload assets (Windows)
+      - name: Build signed bundles (Windows)
+        id: build-windows
         if: ${{ runner.os == 'Windows' }}
         uses: tauri-apps/tauri-action@v0.6.0
         env:
@@ -568,13 +561,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: "bun run tauri"
-          releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
-          # The action retries uploads separately, so a transient connection
-          # failure does not discard a completed build and notarization.
-          retryAttempts: 2
           args: ${{ matrix.tauri_args }}
-          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
+
+      - name: Upload completed build assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+          RELEASE_VERSION: ${{ needs.create-release.outputs.nightly_version }}
+          TAURI_ARTIFACT_PATHS: ${{ steps.build-macos.outputs.artifactPaths || steps.build-macos-signed.outputs.artifactPaths || steps.build-windows.outputs.artifactPaths }}
+          BUILD_PLATFORM: ${{ runner.os == 'macOS' && 'darwin' || 'windows' }}
+          BUILD_ARCH: ${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x64' }}
+        run: python3 .release-tools/scripts/release-publication.py upload --channel nightly
 
       - name: Collect debug symbols (macOS)
         if: ${{ runner.os == 'macOS' }}

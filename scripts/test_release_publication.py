@@ -126,6 +126,59 @@ class PublicationTests(unittest.TestCase):
         api.assert_called_once_with("owner/repo", "releases/42")
         gh.assert_not_called()
 
+    def test_upload_keeps_signed_bytes_and_existing_asset_names(self):
+        for platform, arch, files in [
+            ("darwin", "aarch64", ["LiveType.app.tar.gz", "LiveType.app.tar.gz.sig", "LiveType.dmg"]),
+            ("windows", "x64", ["LiveType_x64-setup.exe", "LiveType_x64-setup.exe.sig"]),
+        ]:
+            with self.subTest(platform=platform), tempfile.TemporaryDirectory() as directory:
+                paths = [Path(directory) / name for name in files]
+                for path in paths:
+                    path.write_bytes(b"signed-bundle-bytes")
+                def upload(*args):
+                    uploaded = Path(args[3])
+                    self.assertEqual(uploaded.read_bytes(), b"signed-bundle-bytes")
+                    self.assertEqual(args[:3], ("release", "upload", self.draft["tag_name"]))
+                    self.assertTrue(uploaded.name.startswith(f"LiveType_{os.environ['RELEASE_VERSION']}_{platform}_{arch}."))
+                config = {"productName": "LiveType", "version": os.environ["RELEASE_VERSION"]}
+                with patch.dict(os.environ, BUILD_PLATFORM=platform, BUILD_ARCH=arch,
+                                TAURI_ARTIFACT_PATHS=json.dumps([str(p) for p in paths])), \
+                     patch.object(MODULE, "api", return_value=self.draft), \
+                     patch.object(Path, "read_text", return_value=json.dumps(config)), \
+                     patch.object(MODULE, "gh", side_effect=upload) as gh:
+                    MODULE.upload("owner/repo", "nightly", 42)
+                self.assertEqual(gh.call_count, len(files))
+                self.assertTrue(all(path.read_bytes() == b"signed-bundle-bytes" for path in paths))
+
+    def test_upload_retries_the_api_and_transfer_without_running_a_build(self):
+        error = subprocess.CalledProcessError(1, "gh", stderr="Connect Timeout Error")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "LiveType.dmg"
+            path.write_bytes(b"signed")
+            config = {"productName": "LiveType", "version": os.environ["RELEASE_VERSION"]}
+            with patch.dict(os.environ, BUILD_PLATFORM="darwin", BUILD_ARCH="aarch64",
+                            TAURI_ARTIFACT_PATHS=json.dumps([str(path)])), \
+                 patch.object(MODULE, "api", side_effect=[error, self.draft]) as api, \
+                 patch.object(Path, "read_text", return_value=json.dumps(config)), \
+                 patch.object(MODULE, "gh", side_effect=[error, None]) as gh, \
+                 patch.object(MODULE.time, "sleep"):
+                MODULE.upload("owner/repo", "nightly", 42)
+            self.assertEqual(api.call_count, 2)
+            self.assertEqual(gh.call_count, 2)
+            self.assertTrue(all(call.args[:2] == ("release", "upload") for call in gh.call_args_list))
+
+    def test_upload_refuses_another_runs_draft_and_exhausted_retries(self):
+        with patch.object(MODULE, "api", return_value={**self.draft, "tag_name": "build-nightly-999-1"}), \
+             patch.object(MODULE, "gh") as gh:
+            with self.assertRaisesRegex(RuntimeError, "草稿"):
+                MODULE.upload("owner/repo", "nightly", 42)
+        gh.assert_not_called()
+        with patch.object(MODULE, "api", side_effect=subprocess.CalledProcessError(1, "gh")) as api, \
+             patch.object(MODULE.time, "sleep"):
+            with self.assertRaises(subprocess.CalledProcessError):
+                MODULE.upload("owner/repo", "nightly", 42)
+        self.assertEqual(api.call_count, 3)
+
     def test_lookup_does_not_ignore_permission_or_network_errors(self):
         for status in (403, 500, 404):
             with self.subTest(status=status), patch.object(MODULE, "api", side_effect=

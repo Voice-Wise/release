@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import quote
 
@@ -47,6 +48,56 @@ def create(repo, channel):
 def validate_draft(release, channel):
     if not release["draft"] or release["tag_name"] != draft_tag(channel):
         raise RuntimeError("拒绝操作不属于本次构建的草稿")
+
+
+def retry_upload_request(operation):
+    # Real runner failures occurred both while listing assets and uploading them.
+    # Retry the entire gh request, never compilation/signing/notarization.
+    for attempt in range(3):
+        try:
+            return operation()
+        except subprocess.CalledProcessError:
+            if attempt == 2:
+                raise
+            print(f"GitHub 资产请求失败，重试 {attempt + 1}/2", flush=True)
+            time.sleep(2)
+
+
+def upload(repo, channel, release_id):
+    release = retry_upload_request(lambda: api(repo, f"releases/{release_id}"))
+    validate_draft(release, channel)
+    version = os.environ["RELEASE_VERSION"]
+    config = json.loads(Path("src-tauri/tauri.conf.json").read_text(encoding="utf-8"))
+    if config["version"] != version:
+        raise RuntimeError("构建版本与上传版本不一致")
+    platform, arch = os.environ["BUILD_PLATFORM"], os.environ["BUILD_ARCH"]
+    extensions = {
+        "darwin": (".app.tar.gz.sig", ".app.tar.gz", ".dmg"),
+        "windows": (".exe.sig", ".exe"),
+    }[platform]
+    assets = []
+    for value in json.loads(os.environ["TAURI_ARTIFACT_PATHS"]):
+        path = Path(value)
+        if path.is_dir() and path.suffix == ".app":
+            continue  # Tauri already produced the signed updater .app.tar.gz.
+        extension = next((ext for ext in extensions if path.name.endswith(ext)), None)
+        if not extension or not path.is_file():
+            raise RuntimeError(f"缺少或不支持的构建资产：{path}")
+        # Preserve the existing [name]_[version]_[platform]_[arch][ext] contract.
+        name = f"{config['productName']}_{version}_{platform}_{arch}{extension}"
+        assets.append((path, name))
+    if not assets:
+        raise RuntimeError("构建没有生成可上传的资产")
+    for path, name in assets:
+        # gh uses the basename as asset name (# only sets a display label).
+        # A temporary hard link on the same volume preserves signed bytes and
+        # avoids copying/rebuilding the bundle just to change its upload name.
+        with tempfile.TemporaryDirectory(dir=path.parent) as directory:
+            named = Path(directory) / name
+            os.link(path, named)
+            retry_upload_request(lambda: gh("release", "upload", release["tag_name"],
+                                           str(named), "--repo", repo, "--clobber"))
+        print(f"已上传：{name}", flush=True)
 
 
 def find_release(repo, tag):
@@ -126,7 +177,7 @@ def cleanup(repo, channel, release_id):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=["create", "publish", "cleanup"])
+    parser.add_argument("action", choices=["create", "upload", "publish", "cleanup"])
     parser.add_argument("--channel", required=True, choices=["nightly", "stable"])
     args = parser.parse_args()
     repo = os.environ["GITHUB_REPOSITORY"]

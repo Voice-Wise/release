@@ -570,7 +570,8 @@ jobs:
         shell: bash
         run: python3 .release-tools/scripts/runner/apple-signing.py prepare
 
-      - name: Build + upload assets (macOS)
+      - name: Build signed bundles (macOS)
+        id: build-macos
         if: ${{ runner.os == 'macOS' }}
         uses: tauri-apps/tauri-action@v0.6.0
         env:
@@ -583,15 +584,11 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tauriScript: "bun run tauri"
-          releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
-          # The action retries uploads separately, so a transient connection
-          # failure does not discard a completed build and notarization.
-          retryAttempts: 2
           args: ${{ matrix.tauri_args }}
-          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
 
-      - name: Build + upload assets (Windows)
+      - name: Build signed bundles (Windows)
+        id: build-windows
         if: ${{ runner.os == 'Windows' }}
         uses: tauri-apps/tauri-action@v0.6.0
         env:
@@ -600,13 +597,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: "bun run tauri"
-          releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
-          # The action retries uploads separately, so a transient connection
-          # failure does not discard a completed build and notarization.
-          retryAttempts: 2
           args: ${{ matrix.tauri_args }}
-          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
+
+      - name: Upload completed build assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+          RELEASE_VERSION: ${{ needs.create-release.outputs.version }}
+          TAURI_ARTIFACT_PATHS: ${{ steps.build-macos.outputs.artifactPaths || steps.build-windows.outputs.artifactPaths }}
+          BUILD_PLATFORM: ${{ runner.os == 'macOS' && 'darwin' || 'windows' }}
+          BUILD_ARCH: ${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x64' }}
+        run: python3 .release-tools/scripts/release-publication.py upload --channel stable
 
       - name: Collect debug symbols (macOS)
         if: ${{ runner.os == 'macOS' }}
@@ -752,7 +755,8 @@ jobs:
             'C:\Program Files\NSIS' | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
 
-      - name: Build + upload assets (Windows)
+      - name: Build signed bundles (Windows)
+        id: build-windows
         uses: tauri-apps/tauri-action@v0.6.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -760,13 +764,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: "bun run tauri"
-          releaseId: ${{ needs.create-release.outputs.release_id }}
           includeUpdaterJson: false
-          # The action retries uploads separately, so a transient connection
-          # failure does not discard a completed build and notarization.
-          retryAttempts: 2
           args: --target x86_64-pc-windows-msvc --bundles nsis
-          assetNamePattern: "[name]_[version]_[platform]_[arch][ext]"
+
+      - name: Upload completed build assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ needs.create-release.outputs.release_id }}
+          RELEASE_VERSION: ${{ needs.create-release.outputs.version }}
+          TAURI_ARTIFACT_PATHS: ${{ steps.build-windows.outputs.artifactPaths }}
+          BUILD_PLATFORM: ${{ runner.os == 'macOS' && 'darwin' || 'windows' }}
+          BUILD_ARCH: x64
+        run: python3 .release-tools/scripts/release-publication.py upload --channel stable
 
       - name: Collect debug symbols (Windows)
         shell: pwsh
