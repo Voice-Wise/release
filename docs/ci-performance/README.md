@@ -99,6 +99,20 @@
 
 云端模型回归仍有真实输出波动；最终成功验收不表示这些应用/第三方场景已经消除波动。全部失败记录可从 after-runs.json 追溯。
 
+## 云端文本验收调整（2026-11-02）
+
+本地确定性测试继续严格检查原有输出、状态、事件和历史记录。真实云端模型使用独立的文本标准：内置有声样本必须返回有效非空文本，并保留“语音输入”的核心内容，接受语音打字、语音录入、声音转文字等表达；不再强制包含“你好”或达到 75% 字符相似度。低相似度只产生质量警告，空白、纯标点和无关结果仍阻断验收。其余错误、历史阶段、重试及发布门禁保持不变。
+
+断言实现位于 VoiceWise 源码仓库的 `src-tauri/src/testing/functional/`（提交 `b4516b20`），release 工作流继续使用待测 ref 自带的测试。新标准只对包含该改动的源码提交或后续版本生效；重跑旧 tag 不会自动改变旧版的验收逻辑。本地 15 项相关单测、6 个本地功能场景及 7 个云端场景通过；2 个国际区场景因缺少凭据跳过。
+
+## DeepSeek 更新说明（2026-11-02）
+
+正式版和 Nightly 通过 `_release-notes.yml` 共用 `scripts/generate-release-notes.py`，使用 `deepseek-flash`、`DEEPSEEK_API_KEY` 及非思考 JSON 输出。密钥优先从同名 secret 获取，也支持同名 Actions variable。正式版比较上一个稳定版本，Nightly 比较最近稳定版本，不把 nightly 标签当作稳定基线。
+
+生成器使用提交标题和正文，合并重复变化、排除内部维护，并要求中英文对应、仅陈述有记录支持的用户变化；不再使用损坏的中文 prompt。字符相似度与模型推理无关，更新说明生成不会影响上面的功能测试规则。
+
+超时、限流和响应不完整时最多尝试三次。失败会明确记录警告并保留可发布的双语占位说明，不再隐藏错误；构建、签名和测试不为此重跑。手动运行 `Release Notes Preview`，指定 `source_ref` 和 `strict=true`，可只生成报告而不创建或发布 Release；预览遇到生成失败会返回失败，避免把占位文案误判为成功。
+
 ## 范围边界与复现
 
 源码仓库 Voice-Wise/VoiceWise 的触发器已同步到远端默认分支 master，提交 [ac18a69e](https://github.com/Voice-Wise/VoiceWise/commit/ac18a69e976b0991b7df227c182ccf1d5d1e9b43)：分支 CI 按分支取消旧触发，main/master 使用独立运行分组，Nightly 每次主线推送独立触发且不取消旧提交。现有文档 paths-ignore 保留。源端 [Trigger Nightly Build](https://github.com/Voice-Wise/VoiceWise/actions/runs/41301839723) 已成功，自动调用 release/main 的 [优化版 Nightly](https://github.com/Voice-Wise/release/actions/runs/41301847369)。后续源码推送直接使用优化流程，无需再合并或切换测试分支。本仓库 main 无分支保护或 ruleset，未修改保护配置；Workflow checks 保持稳定名称供 required check 使用。

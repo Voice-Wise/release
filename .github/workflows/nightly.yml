@@ -38,7 +38,6 @@ jobs:
       source_commit_sha: ${{ steps.source_commit.outputs.sha }}
       skip_windows: ${{ steps.params.outputs.skip_windows }}
       package_matrix: ${{ steps.package-matrix.outputs.matrix }}
-      release_body: ${{ steps.changelog.outputs.notes }}
     steps:
       - name: Get build parameters
         id: params
@@ -157,33 +156,17 @@ jobs:
           echo "nightly_version=${NIGHTLY_VERSION}" >> "$GITHUB_OUTPUT"
           echo "Nightly version: ${NIGHTLY_VERSION}"
 
-      - name: Build nightly release body
-        id: changelog
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          CURRENT_REF="${{ steps.source_commit.outputs.sha }}"
-          LAST_STABLE_TAG="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
-
-          if [[ -n "${LAST_STABLE_TAG}" ]]; then
-            COMPARE_URL="https://github.com/Voice-Wise/VoiceWise/compare/${LAST_STABLE_TAG}...${CURRENT_REF}"
-          else
-            COMPARE_URL=""
-          fi
-
-          HEADER="## Nightly Build\n\n- Version: v${{ steps.version.outputs.nightly_version }}\n- Ref: ${CURRENT_REF}\n"
-          if [[ -n "${COMPARE_URL}" ]]; then
-            HEADER="${HEADER}- Compare: ${COMPARE_URL}\n"
-          fi
-
-          NOTES="${HEADER}\n\n## Changelog\n\nNightly changelog generation is skipped for this build.\n"
-
-          {
-            echo "notes<<EOF"
-            echo -e "$NOTES"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+  changelog:
+    name: Generate Nightly Release Notes
+    needs: [prepare]
+    uses: ./.github/workflows/_release-notes.yml
+    with:
+      source_ref: ${{ needs.prepare.outputs.source_commit_sha }}
+      channel: nightly
+      version: ${{ needs.prepare.outputs.nightly_version }}
+    secrets:
+      PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || vars.DEEPSEEK_API_KEY }}
 
   test-frontend:
     name: Frontend Checks
@@ -335,7 +318,6 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_BODY: ${{ needs.prepare.outputs.release_body }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.nightly_version }}
         run: python3 scripts/release-publication.py create --channel nightly
 
@@ -651,8 +633,8 @@ jobs:
       group: nightly-publication
       cancel-in-progress: false
       queue: max
-    needs: [create-release, test-frontend, test, test-windows, package]
-    if: ${{ always() && needs.create-release.result == 'success' && needs.test.result == 'success' && needs.test-frontend.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.test-windows.result == 'success') }}
+    needs: [changelog, create-release, test-frontend, test, test-windows, package]
+    if: ${{ always() && needs.changelog.result == 'success' && needs.create-release.result == 'success' && needs.test.result == 'success' && needs.test-frontend.result == 'success' && needs.package.result == 'success' && (needs.create-release.outputs.skip_windows == 'true' || needs.test-windows.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -662,6 +644,7 @@ jobs:
 
       - name: Validate manifest and publish draft
         env:
+          RELEASE_BODY: ${{ needs.changelog.outputs.notes }}
           RELEASE_VERIFY_ONLY: ${{ inputs.verify_only || false }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

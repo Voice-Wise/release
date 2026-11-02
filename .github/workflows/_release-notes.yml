@@ -1,0 +1,75 @@
+name: Release Notes Preview
+
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
+      strict:
+        default: false
+        type: boolean
+      channel:
+        default: stable
+        type: string
+      version:
+        default: ""
+        type: string
+    secrets:
+      PRIVATE_REPO_TOKEN:
+        required: true
+      DEEPSEEK_API_KEY:
+        required: false
+    outputs:
+      notes:
+        value: ${{ jobs.notes.outputs.notes }}
+      generated:
+        value: ${{ jobs.notes.outputs.generated }}
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: "Source ref to preview without building or publishing"
+        default: master
+        required: true
+        type: string
+      strict:
+        description: "Fail if AI generation fails instead of accepting fallback notes"
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  notes:
+    name: Generate bilingual release notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      notes: ${{ steps.changelog.outputs.notes }}
+      generated: ${{ steps.changelog.outputs.generated }}
+    steps:
+      - name: Checkout source history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: Voice-Wise/VoiceWise
+          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Checkout release notes generator
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          path: .release-tools
+          sparse-checkout: scripts
+
+      - name: Generate release notes with DeepSeek
+        id: changelog
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || vars.DEEPSEEK_API_KEY }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+          REQUIRE_GENERATED_NOTES: ${{ inputs.strict }}
+          RELEASE_CHANNEL: ${{ inputs.channel || 'stable' }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: python3 .release-tools/scripts/generate-release-notes.py

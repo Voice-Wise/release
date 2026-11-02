@@ -107,82 +107,12 @@ jobs:
   changelog:
     name: Generate Release Notes
     needs: [prepare]
-    runs-on: ubuntu-latest
-    outputs:
-      notes: ${{ steps.changelog.outputs.notes }}
-    steps:
-      - name: Checkout source history
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        with:
-          repository: Voice-Wise/VoiceWise
-          token: ${{ secrets.PRIVATE_REPO_TOKEN }}
-          ref: ${{ needs.prepare.outputs.ref }}
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Generate changelog from commits
-        id: changelog
-        shell: bash
-        env:
-          DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
-        run: |
-          set -euo pipefail
-
-          CURRENT_TAG="${{ needs.prepare.outputs.ref }}"
-          PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*' "${CURRENT_TAG}^" 2>/dev/null || true)"
-
-          if [[ -n "${PREV_TAG}" ]]; then
-            RANGE="${PREV_TAG}..HEAD"
-          else
-            RANGE="HEAD"
-          fi
-
-          # Get commit messages
-          COMMITS="$(git log --reverse --no-merges --format='%s' "${RANGE}" | grep -v '^chore(release):' || true)"
-
-          if [[ -z "$COMMITS" ]]; then
-            NOTES="## Changelog
-
-          - No changes.
-          "
-          else
-            # Build the prompt
-            PROMPT="Based on the following git commit messages, generate a concise and user-friendly changelog in BOTH Chinese (Simplified) and English. First output the Chinese version, then add a horizontal rule (---), then output the English version. Group changes by category (e.g., 鉁?鏂板姛鑳?New Features, 馃悰 闂淇/Bug Fixes, 鈿?鎬ц兘浼樺寲/Performance, 馃敡 鍏朵粬鏀硅繘/Other Improvements). Only include meaningful changes, skip trivial commits. Use clear, non-technical language. Output ONLY the changelog content in markdown format without any preamble.
-
-          Commit messages:
-          $COMMITS"
-
-            # Call DashScope API
-            RESPONSE=$(curl -s --max-time 30 "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" \
-              -H "Authorization: Bearer $DASHSCOPE_API_KEY" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -n --arg prompt "$PROMPT" '{
-                "model": "qwen3.6-plus",
-                "messages": [{"role": "user", "content": $prompt}],
-                "max_tokens": 1024
-              }')" 2>/dev/null || echo "{}")
-
-            CHANGELOG=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // empty' 2>/dev/null || true)
-
-            if [[ -z "$CHANGELOG" ]]; then
-              # Fallback to generic message (don't expose raw commit messages)
-              NOTES="## Changelog
-
-          See release for details. / 璇﹁鍙戝竷璇存槑銆?
-          "
-            else
-              NOTES="## Changelog
-
-          $CHANGELOG
-          "
-            fi
-          fi
-
-          {
-            echo "notes<<EOF"
-            echo "$NOTES"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+    uses: ./.github/workflows/_release-notes.yml
+    with:
+      source_ref: ${{ needs.prepare.outputs.ref }}
+    secrets:
+      PRIVATE_REPO_TOKEN: ${{ secrets.PRIVATE_REPO_TOKEN }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY || vars.DEEPSEEK_API_KEY }}
 
   test-frontend:
     name: Frontend Checks
